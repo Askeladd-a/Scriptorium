@@ -9,6 +9,10 @@ box={ timeleft=0 }
 -- global damping to reduce lingering oscillations (linear and angular)
 box.linear_damping = 0.18
 box.angular_damping = 0.18
+-- sleeping thresholds to eliminate jitter when bodies come to rest
+box.sleep_linear_threshold = 0.02
+box.sleep_angular_threshold = 0.02
+box.sleep_steps = 12
 -- positional correction parameters and safety
 box.pos_slop = 0.01     -- small penetration ignored
 box.pos_percent = 0.2   -- positional correction strength
@@ -52,6 +56,22 @@ function box:update(dt)
           s.angular = s.angular * af
         end
       if math.abs(s.angular[3])<0.1 then s.angular[3]=0 end
+      -- sleep threshold: stop micro-jitter once velocities stay below thresholds
+      local lin = s.velocity:abs()
+      local ang = s.angular:abs()
+      local lin_th = s.sleep_linear_threshold or self.sleep_linear_threshold or 0
+      local ang_th = s.sleep_angular_threshold or self.sleep_angular_threshold or 0
+      local steps_th = s.sleep_steps or self.sleep_steps or 0
+      if lin <= lin_th and ang <= ang_th then
+        s._sleep_frames = (s._sleep_frames or 0) + 1
+        if steps_th > 0 and s._sleep_frames >= steps_th then
+          s.velocity = vector{0,0,0}
+          s.angular = vector{0,0,0}
+          s._sleep_frames = steps_th
+        end
+      else
+        s._sleep_frames = 0
+      end
     end
     -- broadphase: sweep-and-prune on X axis to reduce candidate pairs
     local n = #self

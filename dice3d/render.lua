@@ -1,5 +1,56 @@
 
 render={}
+render.shader=nil
+render.mesh=nil
+render.vertexFormat=nil
+
+local function ensure_shader()
+  if render.shader then return end
+  render.shader = love.graphics.newShader [[
+    uniform mat4 projectionMatrix;
+    uniform mat4 modelMatrix;
+    uniform mat4 viewMatrix;
+
+    varying vec4 vertexColor;
+
+    #ifdef VERTEX
+        vec4 position(mat4 transform_projection, vec4 vertex_position)
+        {
+            vertexColor = VertexColor;
+            return projectionMatrix * viewMatrix * modelMatrix * vertex_position;
+        }
+    #endif
+
+    #ifdef PIXEL
+        vec4 effect(vec4 color, Image tex, vec2 texcoord, vec2 pixcoord)
+        {
+            vec4 texcolor = Texel(tex, vec2(texcoord.x, 1-texcoord.y));
+            if (texcolor.a == 0.0) { discard; }
+            return vec4(texcolor)*color*vertexColor;
+        }
+    #endif
+  ]]
+  render.vertexFormat = {
+    {"VertexPosition", "float", 3},
+    {"VertexTexCoord", "float", 2},
+    {"VertexColor", "byte", 4},
+  }
+  render.mesh = love.graphics.newMesh(render.vertexFormat, 6, "triangles", "dynamic")
+  love.graphics.setDepthMode("lequal", true)
+end
+
+function render.begin3d()
+  ensure_shader()
+  local proj, viewm = view.get_matrices()
+  render.shader:send("projectionMatrix", proj)
+  render.shader:send("viewMatrix", viewm)
+  render.shader:send("modelMatrix", {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1})
+  love.graphics.setShader(render.shader)
+end
+
+function render.end3d()
+  love.graphics.setShader()
+end
 
 --z ordered rendering of elements
 function render.zbuffer(z,action)
@@ -35,20 +86,29 @@ function render.board(image, light, x1, x2, y1, y2)
     points[x]=row
   end
 
+  render.begin3d()
   for x=x1,x2-1 do
     for y=y1,y2-1 do
-      local a,b=points[x][y][1],points[x][y][2]
-      local c,d=points[x+1][y][1],points[x+1][y][2]
-      local e,f=points[x][y+1][1],points[x][y+1][2]
       local l=light(vector{x,y}, vector{0,0,1})
-      love.graphics.setColor(255*l,255*l,255*l)
-      love.graphics.push()
-      love.graphics.transform(a,b,c,d,e,f)
-      local image =love.graphics.getImage(image(x,y))
-      love.graphics.draw(image,0,0,0,1/32,1/32)
-      love.graphics.pop()
+      local color = {255*l,255*l,255*l,255}
+      local tex = love.graphics.getImage(image(x,y))
+      local v1 = {x, y, 0}
+      local v2 = {x+1, y, 0}
+      local v3 = {x+1, y+1, 0}
+      local v4 = {x, y+1, 0}
+      render.mesh:setTexture(tex)
+      render.mesh:setVertices({
+        {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+        {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
+        {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
+        {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+        {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
+        {v4[1], v4[2], v4[3], 0, 1, unpack(color)},
+      })
+      love.graphics.draw(render.mesh)
     end
   end
+  render.end3d()
   return {points[x1][y1], points[x2][y1], points[x2][y2], points[x1][y2]}
 end
 
@@ -59,7 +119,7 @@ function render.bulb(action)
   action(z,function()
     love.graphics.setBlendMode("add")
     love.graphics.setColor(255,255,255)
-    love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/64,s/64)
+    love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/96,s/96)
     --[[    love.graphics.circle("fill",x,y,s/5,40)
     love.graphics.circle("line",x,y,s/5,40)
     ]]
@@ -70,49 +130,59 @@ end
 --draws a die complete with lighting and projection
 function render.die(action, die, star)
   local cam={view.get()}
-  local projected={}
-  for i=1,#star do
-    table.insert(projected, {view.project(unpack(star[i]+star.position))})
-  end
-
+  local faces = {}
   for i=1,#die.faces do
-    --prepare face data
     local face=die.faces[i]
-    local xy,z,c={},0,vector()
-    for i=1,#face do
-      c=c+star[face[i]]
-      local p = projected[face[i]]
-      table.insert(xy,p[1])
-      table.insert(xy,p[2])
-      z=z+p[3]
+    local c=vector()
+    for j=1,#face do
+      c=c+star[face[j]]
     end
-    z=z/#face
     c=c/#face
-    
-    --light it up
     local strength=die.material(c+star.position, c:norm())
-    local strength=die.material(c+star.position, c:norm())
-    local color={ die.color[1]*strength, die.color[2]*strength, die.color[3]*strength, die.color[4] }
-    local text={die.text[1]*strength,die.text[2]*strength,die.text[3]*strength}
+    local color={ die.color[1]*strength, die.color[2]*strength, die.color[3]*strength, die.color[4] or 255 }
     local front=c..(1*c+star.position-cam)<=0
-    --if it is visible then render
-    action(z, function()
-      if front then 
-        love.graphics.setColor(unpack(color))
-        love.graphics.polygon("fill",unpack(xy))
-        love.graphics.setColor(unpack(text))
-        die.image(i,unpack(xy))
-        -- outline removed (can cause rendering artifacts); material indicator will be drawn as a dot
-      elseif color[4] and color[4]<255 then
-        love.graphics.setColor(unpack(text))
-        die.image(i,unpack(xy))
-        love.graphics.setColor(unpack(color))
-        love.graphics.polygon("fill",unpack(xy))
+    if front or (color[4] and color[4]<255) then
+      local tex = love.graphics.getImage("textures/"..i..".png")
+      local verts = nil
+      if #face == 3 then
+        local v1 = star[face[1]] + star.position
+        local v2 = star[face[2]] + star.position
+        local v3 = star[face[3]] + star.position
+        verts = {
+          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
+          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
+          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
+          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
+        }
+      else
+        local v1 = star[face[1]] + star.position
+        local v2 = star[face[2]] + star.position
+        local v3 = star[face[3]] + star.position
+        local v4 = star[face[4]] + star.position
+        verts = {
+          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
+          {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
+          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
+          {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
+          {v4[1], v4[2], v4[3], 0, 1, unpack(color)},
+        }
       end
-    end) 
+      table.insert(faces, {texture = tex, vertices = verts})
+    end
   end
-
-  
+  action(0, function()
+    if #faces == 0 then return end
+    render.begin3d()
+    for _,face in ipairs(faces) do
+      render.mesh:setTexture(face.texture)
+      render.mesh:setVertices(face.vertices)
+      love.graphics.draw(render.mesh)
+    end
+    render.end3d()
+  end)
 end
 
 
@@ -173,6 +243,13 @@ function render.edgeboard()
   }
   love.graphics.setColor(0,0,0)
   
+  local w = love.graphics.getWidth()
+  local h = love.graphics.getHeight()
+  local left = -w
+  local right = w * 2
+  local top = -h
+  local bottom = h * 2
+
   local m=1 --m is the leftmost corner
   for i=2,4 do if corners[i][1]<corners[m][1] then m=i end end
   
@@ -183,10 +260,10 @@ function render.edgeboard()
   --we ecpect n(ext) to be the clockwise next from m(in)
   if n[2]>p[2] then n,p=p,n end
   
-  love.graphics.polygon("fill", -100,m[2], m[1],m[2], n[1],n[2], n[1],-100, -100,-100)
-  love.graphics.polygon("fill", n[1],-100, n[1],n[2], o[1],o[2], 100,o[2], 100, -100)
-  love.graphics.polygon("fill", 100,o[2], o[1],o[2], p[1],p[2], p[1],100, 100,100)
-  love.graphics.polygon("fill", p[1],100, p[1],p[2], m[1],m[2], -100,m[2], -100,100)
+  love.graphics.polygon("fill", left,m[2], m[1],m[2], n[1],n[2], n[1],top, left,top)
+  love.graphics.polygon("fill", n[1],top, n[1],n[2], o[1],o[2], right,o[2], right, top)
+  love.graphics.polygon("fill", right,o[2], o[1],o[2], p[1],p[2], p[1],bottom, right,bottom)
+  love.graphics.polygon("fill", p[1],bottom, p[1],p[2], m[1],m[2], left,m[2], left,bottom)
   
 end
 

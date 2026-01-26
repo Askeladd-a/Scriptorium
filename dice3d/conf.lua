@@ -15,5 +15,5 @@ function love.conf(t)
 
     -- Identify the save directory and target LÖVE version
     t.identity = "dice3d"             -- Save directory name
-    t.version = "11.4"                -- LÖVE version this game targets (string)
+    t.version = "11.5"                -- LÖVE version this game targets (string)
 end
