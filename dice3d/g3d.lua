@@ -3,7 +3,8 @@
 -- the dice and tray using the existing projection helpers in view.lua.
 -- Replace this file with the real g3d.lua for full 3D rendering.
 
-local vector = require "vector"
+require "vector"
+local vector = _G.vector
 
 local g3d = {}
 
