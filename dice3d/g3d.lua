@@ -3,6 +3,8 @@
 -- the dice and tray using the existing projection helpers in view.lua.
 -- Replace this file with the real g3d.lua for full 3D rendering.
 
+local vector = require "vector"
+
 local g3d = {}
 
 local model_cache = {}
@@ -81,8 +83,8 @@ end
 
 local function vec_norm(v)
   local len = math.sqrt(v[1] * v[1] + v[2] * v[2] + v[3] * v[3])
-  if len == 0 then return { 0, 0, 1 } end
-  return { v[1] / len, v[2] / len, v[3] / len }
+  if len == 0 then return vector { 0, 0, 1 } end
+  return vector { v[1] / len, v[2] / len, v[3] / len }
 end
 
 local function get_default_color(texture_path)
@@ -151,9 +153,9 @@ function Model:draw(_camera)
       poly[#poly + 1] = p[2]
     end
 
-    local v1 = face.points[1][4]
-    local v2 = face.points[2][4]
-    local v3 = face.points[3][4]
+    local v1 = vector(face.points[1][4])
+    local v2 = vector(face.points[2][4])
+    local v3 = vector(face.points[3][4])
     local normal = vec_norm(vec_cross(vec_sub(v2, v1), vec_sub(v3, v1)))
 
     local light_strength = 1
