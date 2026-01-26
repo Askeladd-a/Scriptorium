@@ -161,7 +161,7 @@ local function update_matrices()
     aspect = love.graphics.getWidth() / math.max(1, love.graphics.getHeight())
   end
   view.projectionMatrix = GetProjectionMatrix(view.fov, view.near, view.far, aspect)
-  view.viewMatrix = GetViewMatrix({view.get()}, {0,0,0}, {0,1,0})
+  view.viewMatrix = GetViewMatrix({view.get()}, {0,0,0}, {0,0,-1})
 end
 
 function view.raise(delta)
