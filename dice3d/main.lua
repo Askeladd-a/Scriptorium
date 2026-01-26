@@ -71,10 +71,7 @@ tooltip_always_on = true
 
 -- Convert screen coords to world coords (same maths as used in draw)
 function convert(sx, sy)
-  local cx = love.graphics.getWidth()/2
-  local cy = love.graphics.getHeight()/2
-  local scale = cx/4
-  return (sx - cx) / scale, (sy - cy) / scale
+  return sx, sy
 end
 
 -- Pick the topmost die under screen coords (returns die or nil)
@@ -356,16 +353,6 @@ end
 
 
 function love.draw()
-  --use a coordinate system with 0,0 at the center
-  --and an approximate width and height of 10
-  local cx,cy=love.graphics.getWidth()/2,love.graphics.getHeight()/2
-  local scale=cx/4
-  
-  love.graphics.push()
-  love.graphics.translate(cx,cy)
-  love.graphics.scale(scale)
-  -- convert already defined globally; reuse it here
-  
   --board: make it square using box.x as half-extent
   local b = math.max(0.001, box.x)
   render.board(config.boardimage, config.boardlight, -b, b, -b, b)
@@ -381,8 +368,6 @@ function love.draw()
   render.paint()
 
   -- (debug overlay removed)
-
-  love.graphics.pop()
 
   -- Physics debug overlay: show inside/outside state and velocities
   -- disabled by default to hide debug information in the corner
@@ -455,12 +440,10 @@ function love.draw()
   local pad = 6
   local fh = font and font:getHeight() or 14
   if tooltip_always_on then
-    local cx, cy = love.graphics.getWidth()/2, love.graphics.getHeight()/2
-    local scale = cx/4
     for i=1,#dice do
       local s = dice[i].star
       local px,py = view.project(unpack(s.position))
-      local tx, ty = cx + px*scale + 8, cy + py*scale + 8
+      local tx, ty = px + 8, py + 8
       local matname = get_material_name(s) or "none"
       local lines = {
         string.format("Die %d: %s", i, matname),
