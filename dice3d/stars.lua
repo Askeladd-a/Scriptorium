@@ -188,7 +188,7 @@ function box:update(dt)
     table.clear(self.log_buffer)
   end
 end
-star={position=vector{}, velocity=vector{}, angular=vector{}, mass=0, theta=0}
+star={position=vector{}, velocity=vector{}, angular=vector{}, mass=0, theta=0, orientation=rotation.precalculate{1,0,0,0}}
 function star:set(pos,vel,ang,m,th)
   self.position=vector(pos) or self.position
   self.velocity=vector(vel) or self.velocity
@@ -197,6 +197,9 @@ function star:set(pos,vel,ang,m,th)
   -- cache inverse mass for fast access; mass==0 -> invMass = 0 (infinite mass/static)
   self.invMass = (self.mass ~= 0) and (1 / self.mass) or 0
   self.theta=th or self.theta
+  if not self.orientation then
+    self.orientation = rotation.precalculate{1,0,0,0}
+  end
   -- compute radius cache
   local r = 0
   for k=1,#self do r = math.max(r, vector(self[k] or {0,0,0}):abs()) end
@@ -242,6 +245,9 @@ function star:update(dt)
   self.position=self.position+self.velocity*dt
   local r=rotation():set(self.angular:abs()*dt, self.angular:norm())
   for i=1,#self do self[i]=r(self[i]) end
+  if self.orientation then
+    self.orientation = r ^ self.orientation
+  end
 end
 
 
