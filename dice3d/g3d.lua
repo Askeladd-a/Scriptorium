@@ -171,7 +171,7 @@ function Model:draw(_camera)
       self.color[4]
     }
     love.graphics.setColor(color)
-    love.graphics.polygon("fill", poly)
+    love.graphics.polygon("fill", table.unpack(poly))
   end
 end
 
