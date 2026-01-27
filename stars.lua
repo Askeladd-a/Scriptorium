@@ -1,6 +1,5 @@
--- DEPRECATED: This file contains the legacy custom physics engine for dice.
--- It is now fully replaced by Bullet physics via 3DreamEngine. All update calls are disabled.
--- Kept for reference and educational purposes only. Do not use in production.
+-- Legacy custom physics engine for dice.
+-- Used for motion/collisions; tuned to reduce swapping and penetration.
 -- simulation
 --  simulates the behaviour of stars in a box
 --  stars are set of points rigidly connected together
@@ -22,6 +21,10 @@ box.pos_slop = 0     -- nessuna penetrazione ignorata: contatto perfetto
 box.pos_percent = 0.4   -- positional correction strength (più soft, meno swap)
 box.max_steps = 12      -- più sub-steps per frame
 box.dv_max = 50         -- clamp for delta-velocity applied by impulses
+box.collision_iterations = 4
+box.warm_start = true
+box.bias_slop = 0.005
+box.bias_factor = 0.25
 -- buffered logging to reduce I/O churn; lines are flushed once per update
 box.log_buffer = {}
 function box:set(x,y,z,gravity,bounce,friction,dt) 
@@ -38,6 +41,7 @@ function box:update(dt)
   self.timeleft = self.timeleft + dt
   local maxSteps = self.max_steps or 5
   local steps = 0
+  self.last_impulses = self.last_impulses or {}
   while (self.timeleft > self.dt) and (steps < maxSteps) do
     -- precompute gravity vector to avoid per-body allocations
     local gravity_vec = vector{0,0,-(self.gravity or 0) * self.dt}
@@ -105,70 +109,86 @@ function box:update(dt)
       end
       table.sort(intervals, function(a,b) return a.minx < b.minx end)
 
-      -- sweep
-      for ii=1,n do
-        local A = intervals[ii]
-        local a = self[A.idx]
-        for jj = ii+1, n do
-          local B = intervals[jj]
-          if B.minx > A.maxx then break end -- no overlap on x -> skip remaining
-          local b = self[B.idx]
-          -- quick AABB overlap on Y and Z to filter more
-          local aymin, aymax = a.position[2] - a.radius, a.position[2] + a.radius
-          local bymin, bymax = b.position[2] - b.radius, b.position[2] + b.radius
-          if aymax < bymin or bymax < aymin then goto continue_pair end
-          local azmin, azmax = a.position[3] - a.radius, a.position[3] + a.radius
-          local bzmin, bzmax = b.position[3] - b.radius, b.position[3] + b.radius
-          if azmax < bzmin or bzmax < azmin then goto continue_pair end
+      local next_impulses = {}
+      for iter=1,(self.collision_iterations or 1) do
+        -- sweep
+        for ii=1,n do
+          local A = intervals[ii]
+          local a = self[A.idx]
+          for jj = ii+1, n do
+            local B = intervals[jj]
+            if B.minx > A.maxx then break end -- no overlap on x -> skip remaining
+            local b = self[B.idx]
+            -- quick AABB overlap on Y and Z to filter more
+            local aymin, aymax = a.position[2] - a.radius, a.position[2] + a.radius
+            local bymin, bymax = b.position[2] - b.radius, b.position[2] + b.radius
+            if aymax < bymin or bymax < aymin then goto continue_pair end
+            local azmin, azmax = a.position[3] - a.radius, a.position[3] + a.radius
+            local bzmin, bzmax = b.position[3] - b.radius, b.position[3] + b.radius
+            if azmax < bzmin or bzmax < azmin then goto continue_pair end
 
-          -- OBB-OBB collision check (dadi ruotati)
-          if #a == 8 and #b == 8 and obb.intersect then
-            -- calcola i vertici in world space
-            local a_verts, b_verts = {}, {}
-            for k=1,8 do
-              local va = a[k] + a.position
-              local vb = b[k] + b.position
-              a_verts[k] = {va[1], va[2], va[3]}
-              b_verts[k] = {vb[1], vb[2], vb[3]}
-            end
-            local hit, normal, depth = obb.intersect(a_verts, b_verts)
-            if hit and normal and depth and depth > 1e-6 then
-              -- punto di contatto reale tra i due OBB
-              -- punto di contatto: centro-centro (più stabile)
-              local contact = (a.position + b.position) * 0.5
-              local ra = contact - a.position
-              local rb = contact - b.position
-              local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0
-              local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0
-              local denom = invMassA + invMassB
-              if denom > 0 then
-                -- correzione di posizione (soft)
-                local percent = self.pos_percent or 0.4
-                local correction = {normal[1]*depth*percent/denom, normal[2]*depth*percent/denom, normal[3]*depth*percent/denom}
-                a.position = a.position - vector(correction) * invMassA
-                b.position = b.position + vector(correction) * invMassB
-                -- impulso di collisione nel punto di contatto (con rotazione)
-                local n = vector(normal)
-                local va = a.velocity + a.angular ^ ra
-                local vb = b.velocity + b.angular ^ rb
-                local relv = (vb - va)..n
-                local e = math.min(self.bounce or 0.4, 0.9)
-                local j = (-(1+e) * relv) / denom
-                -- limita la magnitudine dell'impulso per evitare esplosioni
-                local maxImpulse = 10
-                if j > maxImpulse then j = maxImpulse end
-                if j < -maxImpulse then j = -maxImpulse end
-                local impulse = n * j
-                a:push(-impulse, ra)
-                b:push(impulse, rb)
-                a._last_collision = {other=B.idx}
-                b._last_collision = {other=A.idx}
+            -- OBB-OBB collision check (dadi ruotati)
+            if #a == 8 and #b == 8 and obb.intersect then
+              -- calcola i vertici in world space
+              local a_verts, b_verts = {}, {}
+              for k=1,8 do
+                local va = a[k] + a.position
+                local vb = b[k] + b.position
+                a_verts[k] = {va[1], va[2], va[3]}
+                b_verts[k] = {vb[1], vb[2], vb[3]}
+              end
+              local hit, normal, depth = obb.intersect(a_verts, b_verts)
+              if hit and normal and depth and depth > 1e-6 then
+                -- punto di contatto: centro-centro (più stabile)
+                local contact = (a.position + b.position) * 0.5
+                local ra = contact - a.position
+                local rb = contact - b.position
+                local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0
+                local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0
+                local denom = invMassA + invMassB
+                if denom > 0 then
+                  local key = A.idx < B.idx and (A.idx .. ":" .. B.idx) or (B.idx .. ":" .. A.idx)
+                  if self.warm_start and self.last_impulses[key] then
+                    local cached = self.last_impulses[key]
+                    local warm = vector(cached.normal) * cached.j
+                    a:push(-warm, ra)
+                    b:push(warm, rb)
+                  end
+                  -- correzione di posizione (soft)
+                  local percent = self.pos_percent or 0.4
+                  local correction = {normal[1]*depth*percent/denom, normal[2]*depth*percent/denom, normal[3]*depth*percent/denom}
+                  a.position = a.position - vector(correction) * invMassA
+                  b.position = b.position + vector(correction) * invMassB
+                  -- impulso di collisione nel punto di contatto (con rotazione)
+                  local n = vector(normal)
+                  local va = a.velocity + a.angular ^ ra
+                  local vb = b.velocity + b.angular ^ rb
+                  local relv = (vb - va)..n
+                  local bias = 0
+                  local bias_slop = self.bias_slop or 0
+                  if depth > bias_slop then
+                    bias = (depth - bias_slop) * (self.bias_factor or 0) / math.max(self.dt, 1e-6)
+                  end
+                  local e = math.min(self.bounce or 0.4, 0.9)
+                  local j = (-(1+e) * relv + bias) / denom
+                  -- limita la magnitudine dell'impulso per evitare esplosioni
+                  local maxImpulse = 10
+                  if j > maxImpulse then j = maxImpulse end
+                  if j < -maxImpulse then j = -maxImpulse end
+                  local impulse = n * j
+                  a:push(-impulse, ra)
+                  b:push(impulse, rb)
+                  a._last_collision = {other=B.idx}
+                  b._last_collision = {other=A.idx}
+                  next_impulses[key] = { j = j, normal = {n[1], n[2], n[3]} }
+                end
               end
             end
+            ::continue_pair::
           end
-          ::continue_pair::
         end
       end
+      self.last_impulses = next_impulses
     end
     self.timeleft = self.timeleft - self.dt
     steps = steps + 1
