@@ -173,6 +173,15 @@ function love.load()
         end
       end
     end
+    if dream.planeObject and dream.planeObject.meshes then
+      for _, mesh in pairs(dream.planeObject.meshes) do
+        if mesh.material then
+          mesh.material.metallic = 0.0
+          mesh.material.roughness = 0.9
+          mesh.material:setColor(0.25, 0.25, 0.28, 1.0)
+        end
+      end
+    end
   end
   -- seed randomness and perform an initial programmatic roll
   math.randomseed(os.time())
@@ -361,6 +370,13 @@ function love.draw()
     if dream_light then
       dream:addLight(dream_light)
     end
+    if dream.planeObject then
+      local board_scale = board_half * 2
+      local board_transform = dream.mat4.getTranslate(0, 0, 0)
+        * dream.mat4.getRotateX(math.pi / 2)
+        * dream.mat4.getScale(board_scale, board_scale, 1)
+      dream:draw(dream.planeObject, board_transform)
+    end
     for i=1,#dice do
       local pos = dice[i].star.position
       local rot = dice[i].rotation or rotation()
@@ -398,43 +414,43 @@ function love.draw()
     love.graphics.setColor(1,1,1)
     local fps = love.timer.getFPS()
     love.graphics.print(string.format("FPS: %d", fps), 8, 8)
-    return
-  end
-  --board: make it square using box.x as half-extent
-  local b = math.max(0.001, box.x)
-  render.board(config.boardimage, config.boardlight, -b, b, -b, b)
-  
-  --shadows
-  for i=1,#dice do
-    render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
-  end
-  render.edgeboard()
-
-  --dice
-  render.clear()
-  render.bulb(render.zbuffer) --light source
-  for i=1,#dice do
-    render.die(render.zbuffer, dice[i].die, dice[i].star)
-  end
-  render.paint()
-
-  -- (debug overlay removed)
-
-  -- Physics debug overlay: show inside/outside state and velocities
-  -- disabled by default to hide debug information in the corner
-  local show_physics_debug = false
-  if show_physics_debug then
-    love.graphics.setColor(255,255,255)
-    local sx,sy = 5,15
+  else
+    --board: make it square using box.x as half-extent
+    local b = math.max(0.001, box.x)
+    render.board(config.boardimage, config.boardlight, -b, b, -b, b)
+    
+    --shadows
     for i=1,#dice do
-      local s = dice[i].star
-      local inside_x = s.position[1] >= -box.x and s.position[1] <= box.x
-      local inside_y = s.position[2] >= -box.y and s.position[2] <= box.y
-      local inside_z = s.position[3] >= 0 and s.position[3] <= box.z
-      local inside = inside_x and inside_y and inside_z and "IN" or "OUT"
-      local v = s.velocity
-      local msg = string.format("die %d: %s pos=(%.2f,%.2f,%.2f) vel=(%.2f,%.2f,%.2f)", i, inside, s.position[1],s.position[2],s.position[3], v[1],v[2],v[3])
-      love.graphics.print(msg, sx, sy + (i-1)*15)
+      render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
+    end
+    render.edgeboard()
+
+    --dice
+    render.clear()
+    render.bulb(render.zbuffer) --light source
+    for i=1,#dice do
+      render.die(render.zbuffer, dice[i].die, dice[i].star)
+    end
+    render.paint()
+
+    -- (debug overlay removed)
+
+    -- Physics debug overlay: show inside/outside state and velocities
+    -- disabled by default to hide debug information in the corner
+    local show_physics_debug = false
+    if show_physics_debug then
+      love.graphics.setColor(255,255,255)
+      local sx,sy = 5,15
+      for i=1,#dice do
+        local s = dice[i].star
+        local inside_x = s.position[1] >= -box.x and s.position[1] <= box.x
+        local inside_y = s.position[2] >= -box.y and s.position[2] <= box.y
+        local inside_z = s.position[3] >= 0 and s.position[3] <= box.z
+        local inside = inside_x and inside_y and inside_z and "IN" or "OUT"
+        local v = s.velocity
+        local msg = string.format("die %d: %s pos=(%.2f,%.2f,%.2f) vel=(%.2f,%.2f,%.2f)", i, inside, s.position[1],s.position[2],s.position[3], v[1],v[2],v[3])
+        love.graphics.print(msg, sx, sy + (i-1)*15)
+      end
     end
   end
   -- Draw simple UI button (screen coords)
