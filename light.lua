@@ -1,15 +1,19 @@
 require "view"
 require "vector"
 
-light=vector{0,0,15} -- posizione usata solo per shadow/bulb
-light.direction = vector{0,0,-1} -- direzione della directional light (verso il piano)
+light=vector{0,0,15}
 
 function light.generic(diffuse, specular, transparent, point, normal)
   
-  -- Directional light: usa solo la direzione, nessuna attenuazione
-  local ray = -light.direction:norm() -- verso il piano
+  local ray=(point-light)
+  local str=ray:abs()
+  if str==0 then str=1 end
+  local att=math.min(1,10/str)
+  ray=ray/str
+  
   --transparent objects can have their backfaces lit as well
   --however, specular lighting can only be on the front face
+  
   local diff,spec=-math.min(normal..ray,0),0
   if specular and specular>0.0 and diff>0 then
     local reflex=ray+2*diff*normal
@@ -17,8 +21,7 @@ function light.generic(diffuse, specular, transparent, point, normal)
     spec=-math.min(0,eye..reflex)
   end
   if transparent then diff=math.max(0.4,math.abs(math.max(-0.4,-normal..ray))) end
-  local ambient = 0.2 -- componente ambient light non nulla
-  return math.min(1, ambient + 1-diffuse-specular + (diff*diffuse + spec*specular))
+  return math.min(1,1-diffuse-specular + att*(diff*diffuse + spec*specular))
 end
 
 function light.cast(point)

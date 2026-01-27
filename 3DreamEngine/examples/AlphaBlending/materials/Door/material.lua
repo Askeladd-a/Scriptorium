@@ -1,3 +1,0 @@
-return {
-	metallic = 0,
-}
