@@ -155,6 +155,9 @@ function love.load()
   for i=1,#dice do box[i]=dice[i].star end
   if dream and dream.init then
     dream:init()
+    if dream.canvases and dream.canvases.setRefractions then
+      dream.canvases:setRefractions(false)
+    end
     dream:setSky(false)
     dream.camera:resetTransform()
     dream.camera:translate(0, 7, 16)
