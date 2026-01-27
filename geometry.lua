@@ -46,12 +46,10 @@ d6= {
   faces={{1,2,3,4}, {5,6,7,8}, {1,2,6,5},{2,3,7,6},{3,4,8,7},{4,1,5,8}}
 }
 function d6.image(n,a,b,c,d,e,f,g,h)
-  if n>6 then return end
-  local img=love.graphics.getImage("textures/"..n..".png")
-  love.graphics.push()
-  love.graphics.transform(a,b,c,d,g,h)
-  love.graphics.draw(img,0,0,0,1/img:getWidth(),1/img:getHeight())
-  love.graphics.pop()
+  -- Disegna una faccia del dado d6 con mappatura UV precisa
+  -- DEBUG: disegna la faccia come poligono verde
+  love.graphics.setColor(0,1,0,1)
+  love.graphics.polygon("fill", a,b, c,d, e,f, g,h)
 end
 
 function newD8star(size)

@@ -1,10 +1,16 @@
 dbg={}
 
 require"base"
+-- Initialize 3DreamEngine Bullet physics world
+dream_bullet_world = nil
+if dream and dream.bullet and dream.bullet.newWorld then
+  dream_bullet_world = dream.bullet.newWorld()
+end
 require"loveplus"
 require"vector"
 
 require"render"
+-- DEPRECATED: stars.lua is now legacy and replaced by Bullet physics. Kept for reference only.
 require"stars"
 require"geometry"
 require"view"
@@ -13,33 +19,59 @@ materials = require"materials"
 
 require "default/config"
 
--- Create four D6 dice by default for playtesting
 dice = {}
+
+-- Ensure Bullet world is initialized before creating dice
+if not (dream_bullet_world and dream and dream.bullet and dream.bullet.newBox) then
+  print("[ERROR] Bullet world or API not initialized before dice creation!")
+end
+
 for i = 1, 4 do
   local sx = (i - 2.5) * 0.8
   dice[i] = {
     star = newD6star():set({sx, 0, 10}, { (i%2==0) and 4 or -4, (i%2==0) and -2 or 2, 0 }, {1,1,2}),
-    die = clone(d6, { material = light.plastic, color = {200, 0, 20, 150}, text = {255,255,255}, shadow = {20,0,0,150} })
+    die = clone(d6, { material = light.plastic, color = {255, 255, 255, 255}, text = {60,60,60}, shadow = {60,60,60,120} })
   }
 
-  -- Apply a wood-like physics preset to the star (visual clone stays unchanged)
-  -- Tweak these numbers later to taste; this does not modify the `die = clone(...)` line
   dice[i].star.mass = 1.2
   dice[i].star.invMass = 1 / 1.2
-  -- per-die tuning to match wood-like behaviour
   dice[i].star.restitution = 0.25
   dice[i].star.friction = 0.75
   dice[i].star.linear_damping = 0.06
   dice[i].star.angular_damping = 0.08
-  -- apply a default material preset to the star for convenience (now rubber)
   if materials and materials.get then
     local mat = materials.get("rubber")
     if mat then materials.apply(dice[i].star, mat) end
   end
+
+  -- Create Bullet rigid body for each die
+  if dream_bullet_world and dream and dream.bullet and dream.bullet.newBox then
+    local pos = dice[i].star.position
+    local size = 0.5 -- approximate half-extent for D6
+    local mass = dice[i].star.mass or 1.2
+    local shape = dream.bullet.newBox(size, size, size)
+    local body = dream.bullet.newRigidBody(shape, mass)
+    body:setPosition(pos[1], pos[2], pos[3])
+    dream_bullet_world:addBody(body)
+    dice[i].star.bullet_body = body
+    print(string.format("[DEBUG] Created Bullet body for die %d at (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
+  else
+    print(string.format("[ERROR] Could not create Bullet body for die %d", i))
+  end
+end
+
+-- Add static board collider to Bullet world
+if dream_bullet_world and dream and dream.bullet and dream.bullet.newBox then
+  local board_size = box and box.x or 10
+  local board_shape = dream.bullet.newBox(board_size, board_size, 0.1)
+  local board_body = dream.bullet.newRigidBody(board_shape, 0) -- mass=0 for static
+  board_body:setPosition(0, 0, 0)
+  dream_bullet_world:addBody(board_body)
 end
 
 -- Simple UI button (screen coordinates)
 local roll_button = { x = 20, y = 620, w = 160, h = 48, text = "Lancia Dadi" }
+local tooltip_button = { x = 20, y = 680, w = 160, h = 32, text = "Tooltip ON/OFF" }
 -- Material UI state (populated in love.load)
 local material_names = {}
 local material_buttons = {}
@@ -91,12 +123,15 @@ local function pick_focused_at_screen(sx, sy)
       return d[i][1]
     end
   end
-  return nil
-end
-
--- Adjust the grabbed star's world x,y so that its projection matches target_px/py at given lift z
--- Compute a world position (x,y) for star such that view.project(x,y,lift) ~= target_px/py.
--- Returns nx,ny (world coords). Does not mutate velocities; caller decides smoothing.
+    return nil
+  end
+    -- Initialize 3DreamEngine Bullet physics world
+    dream_bullet_world = nil
+    local bullet_ready = false
+    if dream and dream.bullet and dream.bullet.newWorld then
+      dream_bullet_world = dream.bullet.newWorld()
+      bullet_ready = true
+    end
 local function snap_star_to_projection(star, target_px, target_py, lift, dt)
   local max_iters = 4
   local eps = 0.001
@@ -110,41 +145,47 @@ local function snap_star_to_projection(star, target_px, target_py, lift, dt)
 
     -- finite difference jacobian
     local px_dx,py_dx = view.project(x+eps,y,z)
-    local px_dy,py_dy = view.project(x,y+eps,z)
-    local j11 = (px_dx - px)/eps
-    local j12 = (px_dy - px)/eps
-    local j21 = (py_dx - py)/eps
-    local j22 = (py_dy - py)/eps
 
-    local det = j11*j22 - j12*j21
-    if math.abs(det) < 1e-8 then break end
-    local dx = (  ( j22*ex - j12*ey) / det) * alpha
-    local dy = (  ( -j21*ex + j11*ey) / det) * alpha
-
-    -- clamp step to avoid overshoot
-    local maxstep = 0.5 * (dt*60 + 0.1)
-    if dx > maxstep then dx = maxstep end
-    if dx < -maxstep then dx = -maxstep end
-    if dy > maxstep then dy = maxstep end
-    if dy < -maxstep then dy = -maxstep end
-
-    nx = nx + dx
-    ny = ny + dy
-  end
-  return nx, ny
-end
-
--- Compute velocity (vx,vy) from samples using linear regression over time
--- Weighted linear regression velocity estimator (gives more weight to recent samples)
-local function compute_velocity_from_samples(samples)
-  local n = #samples
-  if n < 2 then return nil end
-  -- choose time constant (seconds) for exponential weighting
-  local tau = 0.08
-  local last_t = samples[#samples].t
-  local wsum = 0
-  local t_mean = 0
+    dice = {}
+    if bullet_ready then
+      for i = 1, 4 do
+        local sx = (i - 2.5) * 0.8
+        dice[i] = {
+          star = newD6star():set({sx, 0, 10}, { (i%2==0) and 4 or -4, (i%2==0) and -2 or 2, 0 }, {1,1,2}),
+          die = clone(d6, { material = light.plastic, color = {255, 255, 255, 255}, text = {60,60,60}, shadow = {60,60,60,120} })
+        }
+        dice[i].star.mass = 1.2
+        dice[i].star.invMass = 1 / 1.2
+        dice[i].star.restitution = 0.25
+        dice[i].star.friction = 0.75
+        dice[i].star.linear_damping = 0.06
+        dice[i].star.angular_damping = 0.08
+        if materials and materials.get then
+          local mat = materials.get("rubber")
+          if mat then materials.apply(dice[i].star, mat) end
+        end
+        -- Create Bullet rigid body for each die
+        local pos = dice[i].star.position
+        local size = 0.5 -- approximate half-extent for D6
+        local mass = dice[i].star.mass or 1.2
+        local shape = dream.bullet.newBox(size, size, size)
+        local body = dream.bullet.newRigidBody(shape, mass)
+        body:setPosition(pos[1], pos[2], pos[3])
+        dream_bullet_world:addBody(body)
+        dice[i].star.bullet_body = body
+        print(string.format("[DEBUG] Created Bullet body for die %d at (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
+      end
+      -- Add static board collider to Bullet world
+      local board_size = box and box.x or 10
+      local board_shape = dream.bullet.newBox(board_size, board_size, 0.1)
+      local board_body = dream.bullet.newRigidBody(board_shape, 0) -- mass=0 for static
+      board_body:setPosition(0, 0, 0)
+      dream_bullet_world:addBody(board_body)
+    else
+      print("[ERROR] Bullet world or API not initialized before dice creation!")
+    end
   local x_mean = 0
+    end
   local y_mean = 0
   local ws = {}
   for i=1,n do
@@ -177,10 +218,10 @@ function love.load()
   -- increase gravity to make dice fall faster; slightly bump restitution for liveliness
   -- wood-like physical parameters (tuned to avoid overly bouncy behavior)
   -- gravity=25, restitution(bounce)=0.25, friction=0.75, dt=0.01
-  box:set(10,10,10,25,0.25,0.75,0.01)
-  -- slightly stronger global damping to dissipate energy and avoid ball-like rebounds
-  box.linear_damping = 0.12
-  box.angular_damping = 0.12
+  -- Parametri fisici per simulare il legno
+  box:set(10,10,10,25,0.18,0.85,0.01) -- restituzione più bassa, attrito più alto
+  box.linear_damping = 0.10 -- damping leggermente ridotto
+  box.angular_damping = 0.10
   ---round(0.2,dice[2].die,dice[2].star)
 
   for i=1,#dice do box[i]=dice[i].star end
@@ -207,6 +248,11 @@ function love.mousepressed(x,y,b)
   -- button hit test
   if x >= roll_button.x and x <= roll_button.x + roll_button.w and y >= roll_button.y and y <= roll_button.y + roll_button.h then
     if rollAllDice then rollAllDice() end
+    return
+  end
+  -- tooltip toggle button
+  if x >= tooltip_button.x and x <= tooltip_button.x + tooltip_button.w and y >= tooltip_button.y and y <= tooltip_button.y + tooltip_button.h then
+    tooltip_always_on = not tooltip_always_on
     return
   end
 
@@ -302,7 +348,24 @@ function love.update(dt)
     -- grab feature removed: no input-driven follow logic
   end
   
-  box:update(dt)
+  -- Step Bullet physics world and sync dice transforms
+  if dream_bullet_world then
+    dream_bullet_world:step(dt)
+    -- Sync each die's star position/rotation from Bullet body
+    for i=1,#dice do
+      local body = dice[i].star.bullet_body
+      if body then
+        local pos = body:getPosition()
+        local quat = body:getQuaternion()
+        dice[i].star.position = {pos[1], pos[2], pos[3]}
+        dice[i].star.orientation = {quat[1], quat[2], quat[3], quat[4]}
+        print(string.format("[UPDATE] Die %d Bullet pos: (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
+      else
+        print(string.format("[UPDATE] Die %d has NO Bullet body!", i))
+      end
+    end
+  end
+  -- box:update(dt) -- Disabled: legacy physics
 end
 
 -- Programmatic roll helper: apply random impulses to every die
@@ -358,13 +421,18 @@ function love.draw()
   render.board(config.boardimage, config.boardlight, -b, b, -b, b)
   
   --shadows
-  for i=1,#dice do render.shadow(function(z,f) f() end, dice[i].die, dice[i].star) end
+  for i=1,#dice do
+    print(string.format("[DRAW] Rendering die %d at pos: (%.2f, %.2f, %.2f)", i, dice[i].star.position[1], dice[i].star.position[2], dice[i].star.position[3]))
+    render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
+  end
   render.edgeboard()
-  
+
   --dice
   render.clear()
   render.bulb(render.zbuffer) --light source
-  for i=1,#dice do render.die(render.zbuffer, dice[i].die, dice[i].star) end
+  for i=1,#dice do
+    render.die(render.zbuffer, dice[i].die, dice[i].star)
+  end
   render.paint()
 
   -- (debug overlay removed)
@@ -394,6 +462,13 @@ function love.draw()
   local font = love.graphics.getFont()
   local fh = font and font:getHeight() or 14
   love.graphics.printf(roll_button.text, roll_button.x, roll_button.y + (roll_button.h - fh)/2, roll_button.w, "center")
+
+  -- Draw tooltip toggle button
+  love.graphics.setColor(0.2, 0.2, 0.25, 0.95)
+  love.graphics.rectangle("fill", tooltip_button.x, tooltip_button.y, tooltip_button.w, tooltip_button.h, 6, 6)
+  love.graphics.setColor(1,1,1)
+  love.graphics.rectangle("line", tooltip_button.x, tooltip_button.y, tooltip_button.w, tooltip_button.h, 6, 6)
+  love.graphics.printf(tooltip_button.text .. (tooltip_always_on and " (ON)" or " (OFF)"), tooltip_button.x, tooltip_button.y + (tooltip_button.h - fh)/2, tooltip_button.w, "center")
 
   -- FPS counter (screen coords)
   love.graphics.setColor(1,1,1)

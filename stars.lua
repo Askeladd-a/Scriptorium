@@ -1,9 +1,13 @@
+-- DEPRECATED: This file contains the legacy custom physics engine for dice.
+-- It is now fully replaced by Bullet physics via 3DreamEngine. All update calls are disabled.
+-- Kept for reference and educational purposes only. Do not use in production.
 -- simulation
 --  simulates the behaviour of stars in a box
 --  stars are set of points rigidly connected together
 --  stars bounce when they hit a face of their box
 --  stars bounce off each other as if they were spheres
 require"vector"
+local obb = require "obb"
 
 box={ timeleft=0 }
 -- global damping to reduce lingering oscillations (linear and angular)
@@ -14,9 +18,9 @@ box.sleep_linear_threshold = 0.02
 box.sleep_angular_threshold = 0.02
 box.sleep_steps = 12
 -- positional correction parameters and safety
-box.pos_slop = 0.01     -- small penetration ignored
-box.pos_percent = 0.2   -- positional correction strength
-box.max_steps = 5       -- max physics sub-steps per frame (spiral-of-death clamp)
+box.pos_slop = 0     -- nessuna penetrazione ignorata: contatto perfetto
+box.pos_percent = 0.4   -- positional correction strength (più soft, meno swap)
+box.max_steps = 12      -- più sub-steps per frame
 box.dv_max = 50         -- clamp for delta-velocity applied by impulses
 -- buffered logging to reduce I/O churn; lines are flushed once per update
 box.log_buffer = {}
@@ -82,7 +86,17 @@ function box:update(dt)
         -- ensure radius cached
         if not body.radius then
           local r = 0
-          for k=1,#body do r = math.max(r, vector(body[k] or {0,0,0}):abs()) end
+          if #body == 8 then
+            -- cubo: raggio = distanza dal centro a una faccia meno epsilon
+            for k=1,#body do
+              local v = body[k]
+              r = math.max(r, math.abs(v[1]), math.abs(v[2]), math.abs(v[3]))
+            end
+            r = r - 0.05 * r -- epsilon: 5% in meno per garantire contatto visivo
+          else
+            -- altri solidi: raggio = distanza dal centro al vertice più lontano
+            for k=1,#body do r = math.max(r, vector(body[k] or {0,0,0}):abs()) end
+          end
           body.radius = r
         end
         local minx = body.position[1] - body.radius
@@ -107,83 +121,48 @@ function box:update(dt)
           local bzmin, bzmax = b.position[3] - b.radius, b.position[3] + b.radius
           if azmax < bzmin or bzmax < azmin then goto continue_pair end
 
-          -- precise sphere check
-          local diff = b.position - a.position
-          local dist = diff:abs()
-          local minDist = a.radius + b.radius
-          if dist > 0 and dist < minDist then
-            -- perform standard instantaneous collision resolution
-            local normal = diff * (1/dist)
-            -- relative velocity along normal
-            local rel = (b.velocity - a.velocity)..normal
-            local e = math.min(self.bounce or 0.4, 0.9)
-            local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0
-            local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0
-            local denom = invMassA + invMassB
-            if denom > 0 then
-              -- If relative motion between the bodies over this step is large compared to size,
-              -- attempt a swept-sphere CCD to compute time-of-impact and resolve at that instant.
-              local dt = self.dt or 0.0166667
-              local relDisp = (b.velocity - a.velocity) * dt
-              local relPos0 = (b.position - a.position) - relDisp -- relative position at step start
-              local a_q = relDisp..relDisp
-              local b_q = 2 * (relPos0..relDisp)
-              local c_q = (relPos0..relPos0) - (minDist * minDist)
-              local didCCD = false
-              local eps = 1e-8
-              if a_q > eps then
-                local disc = b_q*b_q - 4*a_q*c_q
-                if disc >= 0 then
-                  local sqrtD = math.sqrt(disc)
-                  local ttoi = (-b_q - sqrtD) / (2 * a_q)
-                  if ttoi >= 0 and ttoi <= 1 then
-                    -- time of impact fraction found; move bodies to TOI, apply impulse, advance remainder
-                    local prevA = a.position - a.velocity * dt
-                    local prevB = b.position - b.velocity * dt
-                    local posA_t = prevA + a.velocity * (ttoi * dt)
-                    local posB_t = prevB + b.velocity * (ttoi * dt)
-                    local contact = posB_t - posA_t
-                    local dist_t = contact:abs()
-                    if dist_t > eps then
-                      local n = contact * (1 / dist_t)
-                      -- relative normal velocity at TOI
-                      local relv = (b.velocity - a.velocity)..n
-                      local j = (-(1 + e) * relv) / denom
-                      local impulse = n * j
-                      -- rewind positions to TOI
-                      a.position = posA_t
-                      b.position = posB_t
-                      -- apply impulses to velocities
-                      a:push(-impulse)
-                      b:push(impulse)
-                      -- advance remainder of step with new velocities
-                      local rem = (1 - ttoi) * dt
-                      a.position = a.position + a.velocity * rem
-                      b.position = b.position + b.velocity * rem
-                      didCCD = true
-                    end
-                  end
-                end
-              end
-
-              if not didCCD then
-                -- fallback to instantaneous impulse at end of step
-                local j = (-(1+e) * rel) / denom
-                local impulse = normal * j
-                a:push(-impulse)
-                b:push(impulse)
-                -- mark collision for debug
+          -- OBB-OBB collision check (dadi ruotati)
+          if #a == 8 and #b == 8 and obb.intersect then
+            -- calcola i vertici in world space
+            local a_verts, b_verts = {}, {}
+            for k=1,8 do
+              local va = a[k] + a.position
+              local vb = b[k] + b.position
+              a_verts[k] = {va[1], va[2], va[3]}
+              b_verts[k] = {vb[1], vb[2], vb[3]}
+            end
+            local hit, normal, depth = obb.intersect(a_verts, b_verts)
+            if hit and normal and depth and depth > 1e-6 then
+              -- punto di contatto reale tra i due OBB
+              -- punto di contatto: centro-centro (più stabile)
+              local contact = (a.position + b.position) * 0.5
+              local ra = contact - a.position
+              local rb = contact - b.position
+              local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0
+              local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0
+              local denom = invMassA + invMassB
+              if denom > 0 then
+                -- correzione di posizione (soft)
+                local percent = self.pos_percent or 0.4
+                local correction = {normal[1]*depth*percent/denom, normal[2]*depth*percent/denom, normal[3]*depth*percent/denom}
+                a.position = a.position - vector(correction) * invMassA
+                b.position = b.position + vector(correction) * invMassB
+                -- impulso di collisione nel punto di contatto (con rotazione)
+                local n = vector(normal)
+                local va = a.velocity + a.angular ^ ra
+                local vb = b.velocity + b.angular ^ rb
+                local relv = (vb - va)..n
+                local e = math.min(self.bounce or 0.4, 0.9)
+                local j = (-(1+e) * relv) / denom
+                -- limita la magnitudine dell'impulso per evitare esplosioni
+                local maxImpulse = 10
+                if j > maxImpulse then j = maxImpulse end
+                if j < -maxImpulse then j = -maxImpulse end
+                local impulse = n * j
+                a:push(-impulse, ra)
+                b:push(impulse, rb)
                 a._last_collision = {other=B.idx}
                 b._last_collision = {other=A.idx}
-                -- positional correction to avoid sinking (slop + percent)
-                local slop = self.pos_slop or 0.01
-                local percent = self.pos_percent or 0.2
-                local penetration = minDist - dist
-                if penetration > slop and denom > 0 then
-                  local correction = normal * ((penetration - slop) * (percent / denom))
-                  a.position = a.position - correction * invMassA
-                  b.position = b.position + correction * invMassB
-                end
               end
             end
           end

@@ -1,0 +1,14 @@
+/examples/first person game/scene.blend
+/examples/first person game/*.blend1
+/debugEnabled
+/default
+/todo.txt
+/examples/shadowTest
+/examples/camera
+/examples/Hexquest
+/examples/Voxel
+/examples/archer
+/extensions/weather
+/.idea/
+*.blend
+*.blend1

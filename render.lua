@@ -119,7 +119,7 @@ function render.bulb(action)
   action(z,function()
     love.graphics.setBlendMode("add")
     love.graphics.setColor(255,255,255)
-    love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/96,s/96)
+    love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/384,s/384)
     --[[    love.graphics.circle("fill",x,y,s/5,40)
     love.graphics.circle("line",x,y,s/5,40)
     ]]
@@ -142,32 +142,50 @@ function render.die(action, die, star)
     local color={ die.color[1]*strength, die.color[2]*strength, die.color[3]*strength, die.color[4] or 255 }
     local front=c..(1*c+star.position-cam)<=0
     if front or (color[4] and color[4]<255) then
-      local tex = love.graphics.getImage("textures/"..i..".png")
+      local tex = love.graphics.getImage("textures/d6_uv.png")
       local verts = nil
-      if #face == 3 then
-        local v1 = star[face[1]] + star.position
-        local v2 = star[face[2]] + star.position
-        local v3 = star[face[3]] + star.position
-        verts = {
-          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
-          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
-          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
-          {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
-          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
-          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
+      if #face == 4 then
+        -- Mappa UV per disposizione classica del dado:
+        -- Supponiamo che la UV map abbia le celle così (da sinistra a destra, alto-basso):
+        -- Riga 0: [4]
+        -- Riga 1: [3]
+        -- Riga 2: [5, 6, 1]
+        -- Riga 3: [2]
+        -- Assegniamo le facce classiche:
+        local uv_map = {
+          {2,2}, -- 1 (in basso a destra)
+          {0,3}, -- 2 (in basso a sinistra)
+          {0,1}, -- 3 (centro sinistra)
+          {0,0}, -- 4 (in alto)
+          {0,2}, -- 5 (centro basso sinistra)
+          {1,2}, -- 6 (centro basso)
         }
-      else
+        local u, v = uv_map[i][1], uv_map[i][2]
+        local du, dv = 1/3, 1/4
         local v1 = star[face[1]] + star.position
         local v2 = star[face[2]] + star.position
         local v3 = star[face[3]] + star.position
         local v4 = star[face[4]] + star.position
         verts = {
+          {v1[1], v1[2], v1[3], u*du, v*dv, unpack(color)},
+          {v2[1], v2[2], v2[3], (u+1)*du, v*dv, unpack(color)},
+          {v3[1], v3[2], v3[3], (u+1)*du, (v+1)*dv, unpack(color)},
+          {v1[1], v1[2], v1[3], u*du, v*dv, unpack(color)},
+          {v3[1], v3[2], v3[3], (u+1)*du, (v+1)*dv, unpack(color)},
+          {v4[1], v4[2], v4[3], u*du, (v+1)*dv, unpack(color)},
+        }
+      else
+        -- fallback: triangoli (D4/D8) usano UV pieni
+        local v1 = star[face[1]] + star.position
+        local v2 = star[face[2]] + star.position
+        local v3 = star[face[3]] + star.position
+        verts = {
           {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
           {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
-          {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
+          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
           {v1[1], v1[2], v1[3], 0, 0, unpack(color)},
-          {v3[1], v3[2], v3[3], 1, 1, unpack(color)},
-          {v4[1], v4[2], v4[3], 0, 1, unpack(color)},
+          {v2[1], v2[2], v2[3], 1, 0, unpack(color)},
+          {v3[1], v3[2], v3[3], 0.5, 1, unpack(color)},
         }
       end
       table.insert(faces, {texture = tex, vertices = verts})
