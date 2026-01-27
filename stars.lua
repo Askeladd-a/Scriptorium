@@ -13,18 +13,18 @@ box={ timeleft=0 }
 box.linear_damping = 0.18
 box.angular_damping = 0.18
 -- sleeping thresholds to eliminate jitter when bodies come to rest
-box.sleep_linear_threshold = 0.02
-box.sleep_angular_threshold = 0.02
+box.sleep_linear_threshold = 0.01
+box.sleep_angular_threshold = 0.01
 box.sleep_steps = 12
 -- positional correction parameters and safety
-box.pos_slop = 0     -- nessuna penetrazione ignorata: contatto perfetto
-box.pos_percent = 0.4   -- positional correction strength (più soft, meno swap)
+box.pos_slop = 0.002     -- small penetration allowance to avoid jitter
+box.pos_percent = 0.7   -- stronger positional correction to reduce interpenetration
 box.max_steps = 12      -- più sub-steps per frame
 box.dv_max = 50         -- clamp for delta-velocity applied by impulses
-box.collision_iterations = 4
+box.collision_iterations = 8
 box.warm_start = true
-box.bias_slop = 0.005
-box.bias_factor = 0.25
+box.bias_slop = 0.002
+box.bias_factor = 0.35
 -- buffered logging to reduce I/O churn; lines are flushed once per update
 box.log_buffer = {}
 function box:set(x,y,z,gravity,bounce,friction,dt) 

@@ -1,21 +1,24 @@
 # Copilot instructions for 3D-studio
 
 ## Repository summary
-- **Purpose**: A LÖVE (Love2D) Lua project that renders 3D dice via 3DreamEngine while simulation is handled by a legacy physics solver in `stars.lua`. The playable entry point is the repo root `main.lua` with `conf.lua` configuring the LÖVE window.
-- **Repo shape**: Small-to-medium monorepo containing this dice demo plus vendored engines (`3DreamEngine/`, `g3d/`, `g3d_fps/`).
-- **Languages/runtime**: Lua targeting LÖVE 11.5 (`conf.lua`).
+- **Purpose**: A LÖVE (Love2D) Lua project that renders 3D dice via the vendored 3DreamEngine, with legacy physics helpers in `stars.lua`. The playable entry point is the repo root `main.lua`, with `conf.lua` configuring the LÖVE window.
+- **Repo shape**: Small-to-medium repo with the dice demo plus vendored engines (`3DreamEngine/`, `g3d/`, `g3d_fps/`).
+- **Languages/runtime**: Lua code targeting LÖVE 11.x; assets are images and models referenced by the Lua modules.
 
 ## Build / run / test / lint / validation
-> There are no formal build/test/lint scripts. The app runs directly via LÖVE.
+> There are no formal build/test/lint scripts. The app runs directly via LÖVE, and there is no CI configuration.
 
 ### Bootstrap
-- **Install LÖVE 11.5** (not available in this container). On Windows there is a helper script `run.bat` that launches Love2D for the repo root.
+- **Install LÖVE 11.x** on the host machine (not available in this container).
+- Windows helper script: `run.bat` launches Love2D for the repo root.
 
 ### Run (validated command behavior)
 - **Always run from the repo root** so relative asset paths resolve.
 - Command (expected on a machine with LÖVE installed):
   - `love .`
-- **Observed in this environment**: `love --version` fails with `command not found`, so runtime validation is not possible here.
+- **Observed in this environment**:
+  - `love --version` → `command not found` (LÖVE not installed).
+  - `lua -v` → `command not found` (standalone Lua not installed).
 
 ### Build
 - No build step; Lua is interpreted by LÖVE.
@@ -31,17 +34,17 @@
 
 ## Project layout / architecture
 - **Repo root (top-level files & dirs)**
-  - `.github/` (this instructions file + agent configs)
-  - `3DreamEngine/` (vendored 3DreamEngine source + docs + examples)
-  - `g3d/` (vendored g3d engine)
-  - `g3d_fps/` (vendored g3d first-person controller)
-  - `default/` (board textures and `config.lua` used by the dice demo)
-  - `textures/` (dice face textures)
-  - `main.lua` (LÖVE callbacks and overall dice game logic)
-  - `conf.lua` (LÖVE 11.5 configuration)
-  - `render.lua`, `geometry.lua`, `stars.lua`, `view.lua`, `simplest_3d.lua`, `light.lua`, `materials.lua`, `vector.lua`, `loveplus.lua`, `base.lua` (legacy rendering/physics helpers; `stars.lua` is the active simulation)
-  - `run.bat` (Windows runner)
-  - `physics_log.txt` (runtime logging output)
+  - `.github/` (this instructions file + agent configs; no CI workflows).
+  - `3DreamEngine/` (vendored 3DreamEngine source + docs + examples).
+  - `g3d/` (vendored g3d engine).
+  - `g3d_fps/` (vendored g3d FPS controller).
+  - `default/` (board textures and `config.lua` used by the dice demo).
+  - `textures/` (dice face textures).
+  - `main.lua` (LÖVE callbacks and overall dice game logic).
+  - `conf.lua` (LÖVE configuration).
+  - `render.lua`, `geometry.lua`, `stars.lua`, `view.lua`, `simplest_3d.lua`, `light.lua`, `materials.lua`, `vector.lua`, `loveplus.lua`, `base.lua` (legacy rendering/physics helpers; `stars.lua` is the active simulation).
+  - `run.bat` (Windows runner).
+  - `physics_log.txt` (runtime logging output).
 
 - **Entry points**
   - `main.lua`: `love.load`, `love.update`, `love.draw`, and input callbacks.
@@ -57,7 +60,8 @@
   - `vector.lua`, `loveplus.lua`, `base.lua`: math and LÖVE utility helpers.
 
 - **Vendored engines & docs**
-  - `3DreamEngine/README.md` and `3DreamEngine/docu/` contain upstream docs (engine overview + feature list + usage snippet).
+  - `3DreamEngine/README.md` + `3DreamEngine/docu/` contain upstream docs (engine overview + usage snippet).
+  - `3DreamEngine/3DreamEngine/` holds engine source, with `extensions/`, `examples/`, `libs/`, and `shaders/` under it.
   - `g3d/README.md` documents groverburger’s g3d engine and a short example.
   - `g3d_fps/README.md` documents the g3d FPS controller.
 
@@ -67,12 +71,13 @@
 
 ## Inventory hints (fast navigation)
 - Root files list (sorted): `.github/`, `3DreamEngine/`, `g3d/`, `g3d_fps/`, `default/`, `textures/`, `base.lua`, `conf.lua`, `geometry.lua`, `light.lua`, `loveplus.lua`, `main.lua`, `materials.lua`, `obb.lua`, `physics_log.txt`, `render.lua`, `run.bat`, `simplest_3d.lua`, `stars.lua`, `vector.lua`, `view.lua`.
-- `3DreamEngine/` contains its own `README.md`, `TODO.md`, `docu/`, `examples/`, and engine source under `3DreamEngine/3DreamEngine/`.
-- `g3d/` contains the g3d engine and assets; `g3d_fps/` contains a first-person controller built on g3d.
+- `3DreamEngine/` contains `README.md`, `TODO.md`, `LICENSE`, `docu/`, `examples/`, and engine source under `3DreamEngine/3DreamEngine/` (including `extensions/`, `libs/`, and `shaders/`).
+- `g3d/` contains `README.md`, `LICENSE`, and engine source under `g3d/`.
+- `g3d_fps/` contains `README.md`, `LICENSE`, and its FPS controller Lua files.
 
 ## README inventory
 - **No repo-root README**. The closest references are:
-  - `3DreamEngine/README.md` (engine overview, usage snippet, screenshots).
+  - `3DreamEngine/README.md` (engine overview + usage snippet + screenshots).
   - `g3d/README.md` (engine overview + demo snippet).
   - `g3d_fps/README.md` (FPS controller summary).
 
