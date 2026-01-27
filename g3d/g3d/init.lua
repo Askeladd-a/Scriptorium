@@ -1,6 +1,13 @@
 -- written by groverbuger for g3d
 -- MIT license
 
+if not table.unpack then
+    table.unpack = unpack
+end
+if not unpack then
+    unpack = table.unpack
+end
+
 --[[
          __       __
        /'__`\    /\ \
