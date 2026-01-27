@@ -1,7 +1,7 @@
 dbg={}
 
 require"base"
-dream = require("3DreamEngine.init")
+dream = require("3DreamEngine.3DreamEngine")
 require"loveplus"
 require"vector"
 
@@ -155,11 +155,33 @@ function love.load()
   for i=1,#dice do box[i]=dice[i].star end
   if dream and dream.init then
     dream:init()
-    dream:setSky(false)
+    if dream.canvases and dream.canvases.setRefractions then
+      dream.canvases:setRefractions(false)
+    end
+    dream.sun_ambient = dream.vec3(0.3, 0.3, 0.35)
+    dream:setSky({ 0.1, 0.1, 0.12 })
     dream.camera:resetTransform()
     dream.camera:translate(0, 7, 16)
     dream.camera:rotateX(-0.45)
     dream_light = dream:newLight("sun")
+    if dream.cubeObject and dream.cubeObject.meshes then
+      for _, mesh in pairs(dream.cubeObject.meshes) do
+        if mesh.material then
+          mesh.material.metallic = 0.0
+          mesh.material.roughness = 0.9
+          mesh.material:setColor(0.9, 0.9, 0.9, 1.0)
+        end
+      end
+    end
+    if dream.planeObject and dream.planeObject.meshes then
+      for _, mesh in pairs(dream.planeObject.meshes) do
+        if mesh.material then
+          mesh.material.metallic = 0.0
+          mesh.material.roughness = 0.9
+          mesh.material:setColor(0.25, 0.25, 0.28, 1.0)
+        end
+      end
+    end
   end
   -- seed randomness and perform an initial programmatic roll
   math.randomseed(os.time())
@@ -223,6 +245,12 @@ end
 function love.wheelmoved(dx,dy)
   if dy>0 then view.move(1.1) end
   if dy<0 then view.move(0.91) end
+end
+
+function love.resize(w, h)
+  if use_dream_renderer and dream and dream.resize then
+    dream:resize(w, h)
+  end
 end
 
 function love.update(dt)
@@ -348,10 +376,26 @@ function love.draw()
     if dream_light then
       dream:addLight(dream_light)
     end
+    if dream.planeObject then
+      local board_scale = board_half * 2
+      local board_transform = dream.mat4.getTranslate(0, 0, 0)
+        * dream.mat4.getRotateX(math.pi / 2)
+        * dream.mat4.getScale(board_scale, board_scale, 1)
+      dream:draw(dream.planeObject, board_transform)
+    end
     for i=1,#dice do
       local pos = dice[i].star.position
       local rot = dice[i].rotation or rotation()
       local w, x, y, z = rot[1], rot[2], rot[3], rot[4]
+      local len = math.sqrt(w * w + x * x + y * y + z * z)
+      if len > 0 then
+        w = w / len
+        x = x / len
+        y = y / len
+        z = z / len
+      else
+        w, x, y, z = 1, 0, 0, 0
+      end
       local sx = 1
       local sy = 1
       local sz = 1
@@ -364,10 +408,14 @@ function love.draw()
       local m31 = 2 * x * z - 2 * y * w
       local m32 = 2 * y * z + 2 * x * w
       local m33 = 1 - 2 * x * x - 2 * y * y
+      -- swap Y/Z to map physics Z-up coordinates to 3DreamEngine Y-up
+      local r11, r12, r13 = m11, m13, m12
+      local r21, r22, r23 = m31, m33, m32
+      local r31, r32, r33 = m21, m23, m22
       local transform = dream.mat4({
-        m11 * sx, m12 * sy, m13 * sz, pos[1],
-        m21 * sx, m22 * sy, m23 * sz, pos[3],
-        m31 * sx, m32 * sy, m33 * sz, pos[2],
+        r11 * sx, r12 * sy, r13 * sz, pos[1],
+        r21 * sx, r22 * sy, r23 * sz, pos[3],
+        r31 * sx, r32 * sy, r33 * sz, pos[2],
         0, 0, 0, 1,
       })
       dream:draw(dream.cubeObject, transform)
@@ -376,43 +424,43 @@ function love.draw()
     love.graphics.setColor(1,1,1)
     local fps = love.timer.getFPS()
     love.graphics.print(string.format("FPS: %d", fps), 8, 8)
-    return
-  end
-  --board: make it square using box.x as half-extent
-  local b = math.max(0.001, box.x)
-  render.board(config.boardimage, config.boardlight, -b, b, -b, b)
-  
-  --shadows
-  for i=1,#dice do
-    render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
-  end
-  render.edgeboard()
-
-  --dice
-  render.clear()
-  render.bulb(render.zbuffer) --light source
-  for i=1,#dice do
-    render.die(render.zbuffer, dice[i].die, dice[i].star)
-  end
-  render.paint()
-
-  -- (debug overlay removed)
-
-  -- Physics debug overlay: show inside/outside state and velocities
-  -- disabled by default to hide debug information in the corner
-  local show_physics_debug = false
-  if show_physics_debug then
-    love.graphics.setColor(255,255,255)
-    local sx,sy = 5,15
+  else
+    --board: make it square using box.x as half-extent
+    local b = math.max(0.001, box.x)
+    render.board(config.boardimage, config.boardlight, -b, b, -b, b)
+    
+    --shadows
     for i=1,#dice do
-      local s = dice[i].star
-      local inside_x = s.position[1] >= -box.x and s.position[1] <= box.x
-      local inside_y = s.position[2] >= -box.y and s.position[2] <= box.y
-      local inside_z = s.position[3] >= 0 and s.position[3] <= box.z
-      local inside = inside_x and inside_y and inside_z and "IN" or "OUT"
-      local v = s.velocity
-      local msg = string.format("die %d: %s pos=(%.2f,%.2f,%.2f) vel=(%.2f,%.2f,%.2f)", i, inside, s.position[1],s.position[2],s.position[3], v[1],v[2],v[3])
-      love.graphics.print(msg, sx, sy + (i-1)*15)
+      render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
+    end
+    render.edgeboard()
+
+    --dice
+    render.clear()
+    render.bulb(render.zbuffer) --light source
+    for i=1,#dice do
+      render.die(render.zbuffer, dice[i].die, dice[i].star)
+    end
+    render.paint()
+
+    -- (debug overlay removed)
+
+    -- Physics debug overlay: show inside/outside state and velocities
+    -- disabled by default to hide debug information in the corner
+    local show_physics_debug = false
+    if show_physics_debug then
+      love.graphics.setColor(255,255,255)
+      local sx,sy = 5,15
+      for i=1,#dice do
+        local s = dice[i].star
+        local inside_x = s.position[1] >= -box.x and s.position[1] <= box.x
+        local inside_y = s.position[2] >= -box.y and s.position[2] <= box.y
+        local inside_z = s.position[3] >= 0 and s.position[3] <= box.z
+        local inside = inside_x and inside_y and inside_z and "IN" or "OUT"
+        local v = s.velocity
+        local msg = string.format("die %d: %s pos=(%.2f,%.2f,%.2f) vel=(%.2f,%.2f,%.2f)", i, inside, s.position[1],s.position[2],s.position[3], v[1],v[2],v[3])
+        love.graphics.print(msg, sx, sy + (i-1)*15)
+      end
     end
   end
   -- Draw simple UI button (screen coords)
