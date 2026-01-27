@@ -158,11 +158,21 @@ function love.load()
     if dream.canvases and dream.canvases.setRefractions then
       dream.canvases:setRefractions(false)
     end
-    dream:setSky(false)
+    dream.sun_ambient = dream.vec3(0.3, 0.3, 0.35)
+    dream:setSky({ 0.1, 0.1, 0.12 })
     dream.camera:resetTransform()
     dream.camera:translate(0, 7, 16)
     dream.camera:rotateX(-0.45)
     dream_light = dream:newLight("sun")
+    if dream.cubeObject and dream.cubeObject.meshes then
+      for _, mesh in pairs(dream.cubeObject.meshes) do
+        if mesh.material then
+          mesh.material.metallic = 0.0
+          mesh.material.roughness = 0.9
+          mesh.material:setColor(0.9, 0.9, 0.9, 1.0)
+        end
+      end
+    end
   end
   -- seed randomness and perform an initial programmatic roll
   math.randomseed(os.time())
