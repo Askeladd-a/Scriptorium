@@ -1,16 +1,11 @@
 dbg={}
 
 require"base"
--- Initialize 3DreamEngine Bullet physics world
-dream_bullet_world = nil
-if dream and dream.bullet and dream.bullet.newWorld then
-  dream_bullet_world = dream.bullet.newWorld()
-end
+dream = require("3DreamEngine.init")
 require"loveplus"
 require"vector"
 
 require"render"
--- DEPRECATED: stars.lua is now legacy and replaced by Bullet physics. Kept for reference only.
 require"stars"
 require"geometry"
 require"view"
@@ -20,11 +15,10 @@ materials = require"materials"
 require "default/config"
 
 dice = {}
-
--- Ensure Bullet world is initialized before creating dice
-if not (dream_bullet_world and dream and dream.bullet and dream.bullet.newBox) then
-  print("[ERROR] Bullet world or API not initialized before dice creation!")
-end
+local use_dream_renderer = true
+local dream_light = nil
+local board_half = 10
+local board_height = 10
 
 for i = 1, 4 do
   local sx = (i - 2.5) * 0.8
@@ -43,30 +37,8 @@ for i = 1, 4 do
     local mat = materials.get("rubber")
     if mat then materials.apply(dice[i].star, mat) end
   end
+  dice[i].rotation = rotation()
 
-  -- Create Bullet rigid body for each die
-  if dream_bullet_world and dream and dream.bullet and dream.bullet.newBox then
-    local pos = dice[i].star.position
-    local size = 0.5 -- approximate half-extent for D6
-    local mass = dice[i].star.mass or 1.2
-    local shape = dream.bullet.newBox(size, size, size)
-    local body = dream.bullet.newRigidBody(shape, mass)
-    body:setPosition(pos[1], pos[2], pos[3])
-    dream_bullet_world:addBody(body)
-    dice[i].star.bullet_body = body
-    print(string.format("[DEBUG] Created Bullet body for die %d at (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
-  else
-    print(string.format("[ERROR] Could not create Bullet body for die %d", i))
-  end
-end
-
--- Add static board collider to Bullet world
-if dream_bullet_world and dream and dream.bullet and dream.bullet.newBox then
-  local board_size = box and box.x or 10
-  local board_shape = dream.bullet.newBox(board_size, board_size, 0.1)
-  local board_body = dream.bullet.newRigidBody(board_shape, 0) -- mass=0 for static
-  board_body:setPosition(0, 0, 0)
-  dream_bullet_world:addBody(board_body)
 end
 
 -- Simple UI button (screen coordinates)
@@ -125,13 +97,7 @@ local function pick_focused_at_screen(sx, sy)
   end
     return nil
   end
-    -- Initialize 3DreamEngine Bullet physics world
-    dream_bullet_world = nil
-    local bullet_ready = false
-    if dream and dream.bullet and dream.bullet.newWorld then
-      dream_bullet_world = dream.bullet.newWorld()
-      bullet_ready = true
-    end
+    -- legacy physics only; Bullet integration removed
 local function snap_star_to_projection(star, target_px, target_py, lift, dt)
   local max_iters = 4
   local eps = 0.001
@@ -146,44 +112,6 @@ local function snap_star_to_projection(star, target_px, target_py, lift, dt)
     -- finite difference jacobian
     local px_dx,py_dx = view.project(x+eps,y,z)
 
-    dice = {}
-    if bullet_ready then
-      for i = 1, 4 do
-        local sx = (i - 2.5) * 0.8
-        dice[i] = {
-          star = newD6star():set({sx, 0, 10}, { (i%2==0) and 4 or -4, (i%2==0) and -2 or 2, 0 }, {1,1,2}),
-          die = clone(d6, { material = light.plastic, color = {255, 255, 255, 255}, text = {60,60,60}, shadow = {60,60,60,120} })
-        }
-        dice[i].star.mass = 1.2
-        dice[i].star.invMass = 1 / 1.2
-        dice[i].star.restitution = 0.25
-        dice[i].star.friction = 0.75
-        dice[i].star.linear_damping = 0.06
-        dice[i].star.angular_damping = 0.08
-        if materials and materials.get then
-          local mat = materials.get("rubber")
-          if mat then materials.apply(dice[i].star, mat) end
-        end
-        -- Create Bullet rigid body for each die
-        local pos = dice[i].star.position
-        local size = 0.5 -- approximate half-extent for D6
-        local mass = dice[i].star.mass or 1.2
-        local shape = dream.bullet.newBox(size, size, size)
-        local body = dream.bullet.newRigidBody(shape, mass)
-        body:setPosition(pos[1], pos[2], pos[3])
-        dream_bullet_world:addBody(body)
-        dice[i].star.bullet_body = body
-        print(string.format("[DEBUG] Created Bullet body for die %d at (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
-      end
-      -- Add static board collider to Bullet world
-      local board_size = box and box.x or 10
-      local board_shape = dream.bullet.newBox(board_size, board_size, 0.1)
-      local board_body = dream.bullet.newRigidBody(board_shape, 0) -- mass=0 for static
-      board_body:setPosition(0, 0, 0)
-      dream_bullet_world:addBody(board_body)
-    else
-      print("[ERROR] Bullet world or API not initialized before dice creation!")
-    end
   local x_mean = 0
     end
   local y_mean = 0
@@ -219,12 +147,20 @@ function love.load()
   -- wood-like physical parameters (tuned to avoid overly bouncy behavior)
   -- gravity=25, restitution(bounce)=0.25, friction=0.75, dt=0.01
   -- Parametri fisici per simulare il legno
-  box:set(10,10,10,25,0.18,0.85,0.01) -- restituzione più bassa, attrito più alto
+  box:set(board_half, board_half, board_height, 25, 0.18, 0.85, 0.01) -- restituzione più bassa, attrito più alto
   box.linear_damping = 0.10 -- damping leggermente ridotto
   box.angular_damping = 0.10
   ---round(0.2,dice[2].die,dice[2].star)
 
   for i=1,#dice do box[i]=dice[i].star end
+  if dream and dream.init then
+    dream:init()
+    dream:setSky(false)
+    dream.camera:resetTransform()
+    dream.camera:translate(0, 7, 16)
+    dream.camera:rotateX(-0.45)
+    dream_light = dream:newLight("sun")
+  end
   -- seed randomness and perform an initial programmatic roll
   math.randomseed(os.time())
   -- seed both standard and LÖVE RNGs when available
@@ -348,24 +284,15 @@ function love.update(dt)
     -- grab feature removed: no input-driven follow logic
   end
   
-  -- Step Bullet physics world and sync dice transforms
-  if dream_bullet_world then
-    dream_bullet_world:step(dt)
-    -- Sync each die's star position/rotation from Bullet body
-    for i=1,#dice do
-      local body = dice[i].star.bullet_body
-      if body then
-        local pos = body:getPosition()
-        local quat = body:getQuaternion()
-        dice[i].star.position = {pos[1], pos[2], pos[3]}
-        dice[i].star.orientation = {quat[1], quat[2], quat[3], quat[4]}
-        print(string.format("[UPDATE] Die %d Bullet pos: (%.2f, %.2f, %.2f)", i, pos[1], pos[2], pos[3]))
-      else
-        print(string.format("[UPDATE] Die %d has NO Bullet body!", i))
-      end
+  box:update(dt)
+  for i=1,#dice do
+    local ang = dice[i].star.angular
+    local speed = ang:abs()
+    if speed > 0 then
+      local delta = rotation():set(speed * dt, ang:norm())
+      dice[i].rotation = delta ^ dice[i].rotation
     end
   end
-  -- box:update(dt) -- Disabled: legacy physics
 end
 
 -- Programmatic roll helper: apply random impulses to every die
@@ -416,13 +343,47 @@ end
 
 
 function love.draw()
+  if use_dream_renderer and dream and dream.prepare then
+    dream:prepare()
+    if dream_light then
+      dream:addLight(dream_light)
+    end
+    for i=1,#dice do
+      local pos = dice[i].star.position
+      local rot = dice[i].rotation or rotation()
+      local w, x, y, z = rot[1], rot[2], rot[3], rot[4]
+      local sx = 1
+      local sy = 1
+      local sz = 1
+      local m11 = 1 - 2 * y * y - 2 * z * z
+      local m12 = 2 * x * y - 2 * z * w
+      local m13 = 2 * x * z + 2 * y * w
+      local m21 = 2 * x * y + 2 * z * w
+      local m22 = 1 - 2 * x * x - 2 * z * z
+      local m23 = 2 * y * z - 2 * x * w
+      local m31 = 2 * x * z - 2 * y * w
+      local m32 = 2 * y * z + 2 * x * w
+      local m33 = 1 - 2 * x * x - 2 * y * y
+      local transform = dream.mat4({
+        m11 * sx, m12 * sy, m13 * sz, pos[1],
+        m21 * sx, m22 * sy, m23 * sz, pos[3],
+        m31 * sx, m32 * sy, m33 * sz, pos[2],
+        0, 0, 0, 1,
+      })
+      dream:draw(dream.cubeObject, transform)
+    end
+    dream:present()
+    love.graphics.setColor(1,1,1)
+    local fps = love.timer.getFPS()
+    love.graphics.print(string.format("FPS: %d", fps), 8, 8)
+    return
+  end
   --board: make it square using box.x as half-extent
   local b = math.max(0.001, box.x)
   render.board(config.boardimage, config.boardlight, -b, b, -b, b)
   
   --shadows
   for i=1,#dice do
-    print(string.format("[DRAW] Rendering die %d at pos: (%.2f, %.2f, %.2f)", i, dice[i].star.position[1], dice[i].star.position[2], dice[i].star.position[3]))
     render.shadow(function(z,f) f() end, dice[i].die, dice[i].star)
   end
   render.edgeboard()
