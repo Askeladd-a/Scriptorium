@@ -1,7 +1,7 @@
 dbg={}
 
 require"base"
-dream = require("3DreamEngine.init")
+dream = require("3DreamEngine.3DreamEngine")
 require"loveplus"
 require"vector"
 
@@ -155,6 +155,9 @@ function love.load()
   for i=1,#dice do box[i]=dice[i].star end
   if dream and dream.init then
     dream:init()
+    if dream.canvases and dream.canvases.setRefractions then
+      dream.canvases:setRefractions(false)
+    end
     dream:setSky(false)
     dream.camera:resetTransform()
     dream.camera:translate(0, 7, 16)
@@ -352,6 +355,15 @@ function love.draw()
       local pos = dice[i].star.position
       local rot = dice[i].rotation or rotation()
       local w, x, y, z = rot[1], rot[2], rot[3], rot[4]
+      local len = math.sqrt(w * w + x * x + y * y + z * z)
+      if len > 0 then
+        w = w / len
+        x = x / len
+        y = y / len
+        z = z / len
+      else
+        w, x, y, z = 1, 0, 0, 0
+      end
       local sx = 1
       local sy = 1
       local sz = 1

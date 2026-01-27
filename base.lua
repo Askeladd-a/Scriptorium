@@ -1,3 +1,9 @@
+if not table.unpack then
+  table.unpack = unpack
+end
+if not unpack then
+  unpack = table.unpack
+end
 
 --[[prototypes]]
   --clone creates a new table that inherits from base, or marks a table as inherited from base

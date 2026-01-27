@@ -69,6 +69,7 @@ lib.cache = require(lib.root .. "/libs/cache")
 lib.packer = require(lib.root .. "/libs/packer")
 
 table.unpack = table.unpack or unpack
+unpack = unpack or table.unpack
 
 --delton, disabled when not in debug mode
 lib.delton = require(lib.root .. "/libs/delton"):new(512)
