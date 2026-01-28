@@ -375,24 +375,8 @@ function love.draw()
   love.graphics.translate(cx,cy)
   love.graphics.scale(scale)
 
-  -- Disegna vassoio e dadi 3D
+  -- Disegna vassoio e dadi 3D (solo g3d)
   dice3d.draw()
-  dice3d.draw()
-
-  -- ...existing code...
-  --board: make it square using box.x as half-extent
-  local b = math.max(0.001, box.x)
-  render.board(config.boardimage, config.boardlight, -b, b, -b, b)
-  
-  --shadows
-  for i=1,#dice do render.shadow(function(z,f) f() end, dice[i].die, dice[i].star) end
-  render.edgeboard()
-  
-  --dice
-  render.clear()
-  render.bulb(render.zbuffer) --light source
-  for i=1,#dice do render.die(render.zbuffer, dice[i].die, dice[i].star) end
-  render.paint()
 
   -- (debug overlay removed)
 
