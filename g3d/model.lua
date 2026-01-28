@@ -48,7 +48,9 @@ local function newModel(verts, texture, translation, rotation, scale)
     self.verts = verts
     self.texture = texture
     self.mesh = love.graphics.newMesh(self.vertexFormat, self.verts, "triangles")
-    self.mesh:setTexture(self.texture)
+    if self.texture then
+        self.mesh:setTexture(self.texture)
+    end
     self.matrix = newMatrix()
     if type(scale) == "number" then scale = {scale, scale, scale} end
     self:setTransform(translation or {0,0,0}, rotation or {0,0,0}, scale or {1,1,1})
@@ -75,7 +77,9 @@ function model:makeNormals(isFlipped)
     end
 
     self.mesh = love.graphics.newMesh(self.vertexFormat, self.verts, "triangles")
-    self.mesh:setTexture(self.texture)
+    if self.texture then
+        self.mesh:setTexture(self.texture)
+    end
 end
 
 -- move and rotate given two 3d vectors
@@ -132,6 +136,37 @@ function model:setScale(sx,sy,sz)
     self.scale[2] = sy or sx
     self.scale[3] = sz or sx
     self:updateMatrix()
+end
+
+function model:setColor(r, g, b, a)
+    if type(r) == "table" then
+        r, g, b, a = r[1], r[2], r[3], r[4]
+    end
+    r = r or 1
+    g = g or 1
+    b = b or 1
+    a = a or 1
+
+    if self.verts then
+        for _, vert in ipairs(self.verts) do
+            vert[9] = r
+            vert[10] = g
+            vert[11] = b
+            vert[12] = a
+        end
+        self.mesh:setVertices(self.verts)
+        return
+    end
+
+    local vertexCount = self.mesh:getVertexCount()
+    for i = 1, vertexCount do
+        local values = {self.mesh:getVertex(i)}
+        values[9] = r
+        values[10] = g
+        values[11] = b
+        values[12] = a
+        self.mesh:setVertex(i, unpack(values))
+    end
 end
 
 -- update the model's transformation matrix
@@ -210,7 +245,9 @@ if success then
         self.mesh:release()
         self.mesh = love.graphics.newMesh(self.vertexFormat, #self.verts, "triangles")
         self.mesh:setVertices(data)
-        self.mesh:setTexture(self.texture)
+        if self.texture then
+            self.mesh:setTexture(self.texture)
+        end
         self.verts = nil
     end
 end
