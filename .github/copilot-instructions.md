@@ -4,7 +4,7 @@
 - **Purpose**: LÖVE (Love2D) Lua project that renders a 2D dice UI plus a 3D dice tray using the bundled g3d engine.
 - **Runtime**: LÖVE 11.4 (configured in `conf.lua`).
 - **Languages**: Lua (LuaJIT via LÖVE).
-- **Assets**: OBJ models in `models/`, textures in `textures/` and `default/`.
+- **Assets**: OBJ models in `models/`, textures in `textures/` and `default/` (dice faces are `textures/1.png` through `textures/6.png`).
 
 ## How to run / build / test / lint (validated commands + notes)
 - **Prerequisite**: Install LÖVE 11.4 and ensure the `love` executable is on PATH.

@@ -85,7 +85,7 @@ function dice3d.load()
     dice = {}
     for i=1,3 do
         local d = {
-            model = g3d.newModel("models/cube.obj", "textures/dice_face"..i..".png", {math.random(-2,2), 2, math.random(-2,2)}, {0,0,0}, {0.5,0.5,0.5}),
+            model = g3d.newModel("models/cube.obj", "textures/"..i..".png", {math.random(-2,2), 2, math.random(-2,2)}, {0,0,0}, {0.5,0.5,0.5}),
             pos = {math.random(-2,2), 2, math.random(-2,2)},
             vel = {math.random()-0.5, 0, math.random()-0.5},
             rot = {math.random()*math.pi*2, math.random()*math.pi*2, math.random()*math.pi*2},
