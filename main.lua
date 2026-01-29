@@ -1,12 +1,4 @@
--- (definizione rimossa: handler unificato più sotto)
-
--- (definizione rimossa: handler unificato più sotto)
-
--- (definizione rimossa: handler unificato più sotto)
-
 dbg={}
-
-local dice3d = require("dice3d")
 
 require"base"
 require"loveplus"
@@ -206,9 +198,6 @@ function love.load()
   build_material_list()
   -- prepare rectangles (screen coords) for each die's material button; will be laid out in love.draw if needed
   material_buttons = {}
-
-  -- Inizializza 3D (dadi, vassoio, camera)
-  if dice3d and dice3d.load then dice3d.load() end
 end
 
 -- Track previous inside/outside state per die for automatic investigation
@@ -216,14 +205,14 @@ local prev_inside = {}
 
 
 -- Input-based grabbing has been intentionally disabled.
-function love.mousepressed(x, y, b)
-  if dice3d and dice3d.mousepressed then dice3d.mousepressed(x, y, b) end
+function love.mousepressed(x,y,b)
   if b ~= 1 then return end
   -- button hit test
   if x >= roll_button.x and x <= roll_button.x + roll_button.w and y >= roll_button.y and y <= roll_button.y + roll_button.h then
     if rollAllDice then rollAllDice() end
     return
   end
+
   -- material button hit tests (cycle material for the clicked die)
   for i,rect in ipairs(material_buttons) do
     if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
@@ -244,8 +233,12 @@ function love.mousepressed(x, y, b)
     end
   end
 end
--- (definizione rimossa: handler unificato in alto)
--- (definizione rimossa: handler unificato in alto)
+function love.mousemoved(x,y,dx,dy,istouch)
+  -- no-op: grab removed
+end
+function love.mousereleased(x,y,b)
+  -- no-op: grab removed
+end
 
 -- Mouse wheel scroll (LÖVE 0.9+)
 function love.wheelmoved(dx,dy)
@@ -313,8 +306,6 @@ function love.update(dt)
   end
   
   box:update(dt)
-  -- Aggiorna la pipeline 3D dadi/vassoio
-  dice3d.update(dt)
 end
 
 -- Programmatic roll helper: apply random impulses to every die
@@ -365,7 +356,6 @@ end
 
 
 function love.draw()
-
   --use a coordinate system with 0,0 at the center
   --and an approximate width and height of 10
   local cx,cy=love.graphics.getWidth()/2,love.graphics.getHeight()/2
@@ -374,9 +364,21 @@ function love.draw()
   love.graphics.push()
   love.graphics.translate(cx,cy)
   love.graphics.scale(scale)
-
-  -- Disegna vassoio e dadi 3D (solo g3d)
-  dice3d.draw()
+  -- convert already defined globally; reuse it here
+  
+  --board: make it square using box.x as half-extent
+  local b = math.max(0.001, box.x)
+  render.board(config.boardimage, config.boardlight, -b, b, -b, b)
+  
+  --shadows
+  for i=1,#dice do render.shadow(function(z,f) f() end, dice[i].die, dice[i].star) end
+  render.edgeboard()
+  
+  --dice
+  render.clear()
+  render.bulb(render.zbuffer) --light source
+  for i=1,#dice do render.die(render.zbuffer, dice[i].die, dice[i].star) end
+  render.paint()
 
   -- (debug overlay removed)
 
@@ -498,7 +500,5 @@ end
 function love.keypressed(key, scancode, isrepeat)
   if key == 'r' or key == 'R' then
     if rollAllDice then rollAllDice() end
-    -- Lancia un dado 3D di test
-    dice3d.spawn(0, 2, 0)
   end
 end
