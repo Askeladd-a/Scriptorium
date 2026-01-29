@@ -4,11 +4,9 @@
   --clone uses either base.metatable (if present), or new itself as the metatable
   function clone(base,derived)
     if not derived then derived={} end
-    if base.metatable then
-      return setmetatable(derived, base.metatable)
-    else
-      return setmetatable(derived, {__index = base})
-    end
+    if base.metatable then return setmetatable(derived,base.metatable) end
+    derived.__index=base
+    return setmetatable(derived,derived)
   end
   
   --isa checks if a base object is somewhere in the __index chain of a derived object

@@ -1,9 +1,3 @@
--- Compatibility: provide math.atan2 if missing (Lua 5.1/5.2 have math.atan(y, x))
-if rawget(math, "atan2") == nil then
-  rawset(math, "atan2", function(y, x)
-    return math.atan(y, x)
-  end)
-end
 
 --applies a transformation that maps 
 --  0,0 => ox, oy
@@ -69,21 +63,5 @@ function love.mouse.delta()
   local x,y=love.mouse.getPosition()
   lastx,lasty, x,y = x,y, x-(lastx or x),y-(lasty or y)
   return x,y
-end
-
--- Compatibility wrapper for setColor: accept 0..255 or 0..1 inputs.
-do
-  local _setColor = love.graphics.setColor
-  function love.graphics.setColor(r,g,b,a)
-    if type(r)=="table" then
-      local t=r
-      r,g,b,a = t[1],t[2],t[3],t[4]
-    end
-    if r and (r>1 or (g or 0)>1 or (b or 0)>1 or (a or 0)>1) then
-      return _setColor((r or 0)/255,(g or 0)/255,(b or 0)/255,(a==nil and 1) or a/255)
-    else
-      return _setColor(r,g,b,a)
-    end
-  end
 end
 
