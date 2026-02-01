@@ -29,8 +29,8 @@ for i = 1, 4 do
   -- per-die tuning to match wood-like behaviour
   dice[i].star.restitution = 0.25
   dice[i].star.friction = 0.75
-  dice[i].star.linear_damping = 0.06
-  dice[i].star.angular_damping = 0.08
+  dice[i].star.linear_damping = 0.15  -- increased: dice stop faster
+  dice[i].star.angular_damping = 0.20 -- increased: dice stop spinning sooner
   -- apply a default material preset to the star for convenience (now rubber)
   if materials and materials.get then
     local mat = materials.get("rubber")
@@ -62,9 +62,6 @@ local function get_material_name(star)
   -- fallback: if the material itself has a name field, use it
   return star.material.name
 end
-
--- Tooltip mode: when true, show tooltips for all dice always
-tooltip_always_on = true
 
 -- Drag/grab feature removed: input-based grabbing is disabled to allow programmatic rolls only.
 -- If needed, programmatic roll helper is provided below: rollAllDice().
@@ -315,42 +312,61 @@ function rollAllDice()
   local half = box.x * 0.9
   local side = math.floor(rnd()*4) + 1
   local sx, sy
-  -- pick a point near the border but slightly inset so dice don't spawn exactly on the edge
-  local inset = box.x * (0.03 + rnd() * 0.12) -- 3%..15% inward
+  -- pick a point near the border but MORE inset to prevent immediate wall collisions
+  local inset = box.x * (0.15 + rnd() * 0.10) -- 15%..25% inward (was 3%..15%)
   local span = half - inset
   if side == 1 then sx = -half + inset; sy = (rnd()*2 - 1) * span
   elseif side == 2 then sx = half - inset; sy = (rnd()*2 - 1) * span
   elseif side == 3 then sy = -half + inset; sx = (rnd()*2 - 1) * span
   else sy = half - inset; sx = (rnd()*2 - 1) * span end
 
-  -- spawn height and common impulse directed roughly toward center
-  -- we want the impulse to be downward (negative z) with a maximum angle of 45 degrees
-  local rz = box.z * 0.4 + 0.5 + rnd() * 1.0
+  -- spawn height: higher to give more flight time for diagonal movement
+  local rz = box.z * 0.5 + 1.0 + rnd() * 1.5  -- was 0.4 + 0.5 + 0..1
+  
+  -- compute direction toward center
   local to_center = vector{-sx, -sy, 0}
-  -- normalize lateral direction
   local len = math.sqrt(to_center[1]^2 + to_center[2]^2)
-  if len < 1e-4 then len = 1 end
-  to_center[1] = to_center[1] / len
-  to_center[2] = to_center[2] / len
+  if len < 1e-4 then
+    -- If spawn near center, generate random direction (avoid zero-vector normalization)
+    local angle = rnd() * 2 * math.pi
+    to_center = vector{math.cos(angle), math.sin(angle), 0}
+  else
+    to_center[1] = to_center[1] / len
+    to_center[2] = to_center[2] / len
+  end
 
-  -- choose a downward (negative) vertical impulse magnitude
-  local vertical_strength = -(18 + rnd()*8) -- negative = toward the board
-  -- lateral magnitude must satisfy lateral/|vertical| <= tan(45)=1 to keep angle <=45deg
-  local max_lateral = math.abs(vertical_strength)
-  local lateral_strength = max_lateral * (0.5 + rnd()*0.45) -- between 50% and 95% of vertical
-  local base_impulse = vector{to_center[1] * lateral_strength, to_center[2] * lateral_strength, vertical_strength}
+  -- Target: diagonal throw with ~45 degree angle toward the board center
+  -- Use VELOCITY directly instead of impulse to avoid clamping issues
+  local vertical_speed = -(20 + rnd()*10)  -- downward speed: -20 to -30 (stronger throw)
+  -- Lateral speed: ensure diagonal trajectory (0.8 to 1.1 of vertical magnitude)
+  local lateral_speed = math.abs(vertical_speed) * (0.8 + rnd()*0.3)
+  
+  local base_velocity = vector{
+    to_center[1] * lateral_speed,
+    to_center[2] * lateral_speed,
+    vertical_speed
+  }
 
   for i=1,#dice do
     -- tiny per-die offset to avoid exact overlap on spawn (keeps them 'together')
-    local jitter = 0.02 * (i - (#dice+1)/2)
+    local jitter = 0.05 * (i - (#dice+1)/2)  -- slightly larger jitter
     dice[i].star.position = vector{sx + jitter, sy - jitter, rz}
-    dice[i].star.velocity = vector{0,0,0}
-    -- small random angular variance but same translational impulse (increased spin)
-    dice[i].star.angular = vector{(rnd()-0.5)*10, (rnd()-0.5)*10, (rnd()-0.5)*10}
-    -- apply the same base impulse to all dice (optionally add tiny random noise)
-    local noise = 1.5
-    local impulse = vector{ base_impulse[1] + (rnd()-0.5)*noise, base_impulse[2] + (rnd()-0.5)*noise, base_impulse[3] }
-    dice[i].star:push(impulse, vector{(rnd()-0.5)*1, (rnd()-0.5)*1, 1})
+    
+    -- CRITICAL: Wake up the die so physics actually processes it!
+    dice[i].star.asleep = false
+    dice[i].star.sleep_timer = 0
+    dice[i].star.wall_hits = 0  -- reset wall hit counter
+    
+    -- Angular velocity for visible spin
+    dice[i].star.angular = vector{(rnd()-0.5)*12, (rnd()-0.5)*12, (rnd()-0.5)*12}
+    
+    -- Apply velocity DIRECTLY (bypassing :push() clamping) with tiny per-die variation
+    local noise = 1.2
+    dice[i].star.velocity = vector{
+      base_velocity[1] + (rnd()-0.5)*noise,
+      base_velocity[2] + (rnd()-0.5)*noise,
+      base_velocity[3] + (rnd()-0.5)*0.5  -- less noise on vertical
+    }
   end
 end
 
@@ -448,50 +464,6 @@ function love.draw()
       love.graphics.setColor(1,1,1)
       love.graphics.printf("Cambia", bx, by + (bh - fh)/2, bwb, "center")
       table.insert(material_buttons, { x = bx, y = by, w = bwb, h = bbh })
-    end
-  end
-  -- Tooltip: either always-on for all dice, or hover-based
-  local font = love.graphics.getFont()
-  local pad = 6
-  local fh = font and font:getHeight() or 14
-  if tooltip_always_on then
-    local cx, cy = love.graphics.getWidth()/2, love.graphics.getHeight()/2
-    local scale = cx/4
-    for i=1,#dice do
-      local s = dice[i].star
-      local px,py = view.project(unpack(s.position))
-      local tx, ty = cx + px*scale + 8, cy + py*scale + 8
-      local matname = get_material_name(s) or "none"
-      local lines = {
-        string.format("Die %d: %s", i, matname),
-        string.format("mass=%.2f  rest=%.2f  fric=%.2f", (s.mass or 0), (s.restitution or 0), (s.friction or 0)),
-      }
-      local w = 0
-      for _,ln in ipairs(lines) do w = math.max(w, font:getWidth(ln)) end
-      local h = #lines * fh + (#lines-1)*2
-      love.graphics.setColor(0,0,0,0.75)
-      love.graphics.rectangle("fill", tx, ty, w + pad*2, h + pad*2, 6, 6)
-      love.graphics.setColor(1,1,1)
-      for j,ln in ipairs(lines) do love.graphics.print(ln, tx + pad, ty + pad + (j-1)*(fh+2)) end
-    end
-  else
-    local mx, my = love.mouse.getPosition()
-    local hovered = pick_focused_at_screen(mx, my)
-    if hovered then
-      local s = hovered.star
-      local matname = get_material_name(s) or "none"
-      local lines = {}
-      table.insert(lines, string.format("Material: %s", matname))
-      table.insert(lines, string.format("mass=%.2f  rest=%.2f  fric=%.2f", (s.mass or 0), (s.restitution or 0), (s.friction or 0)))
-      table.insert(lines, string.format("lin_damp=%.2f  ang_damp=%.2f", (s.linear_damping or 0), (s.angular_damping or 0)))
-      local w = 0
-      for i,ln in ipairs(lines) do w = math.max(w, font:getWidth(ln)) end
-      local h = #lines * fh + (#lines-1)*2
-      local tx, ty = mx + 12, my + 12
-      love.graphics.setColor(0,0,0,0.75)
-      love.graphics.rectangle("fill", tx, ty, w + pad*2, h + pad*2, 6, 6)
-      love.graphics.setColor(1,1,1)
-      for i,ln in ipairs(lines) do love.graphics.print(ln, tx + pad, ty + pad + (i-1)*(fh+2)) end
     end
   end
 

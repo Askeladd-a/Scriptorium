@@ -52,6 +52,35 @@ function render.board(image, light, x1, x2, y1, y2)
   return {points[x1][y1], points[x2][y1], points[x2][y2], points[x1][y2]}
 end
 
+-- Single quad board: renders the entire plane as ONE quad (no tile boundaries = no jitter!)
+function render.board_single(texture, light, x1, x2, y1, y2)
+  -- optional extents: defaults keep previous behaviour (-10..10)
+  x1 = x1 or -10; x2 = x2 or 10; y1 = y1 or -10; y2 = y2 or 10
+  
+  -- store extents for edgeboard and other helpers
+  render.board_extents = {x1,x2,y1,y2}
+  
+  -- project the 4 corners of the entire plane
+  local c1 = {view.project(x1, y1, 0)}  -- bottom-left
+  local c2 = {view.project(x2, y1, 0)}  -- bottom-right
+  local c3 = {view.project(x2, y2, 0)}  -- top-right
+  local c4 = {view.project(x1, y2, 0)}  -- top-left
+  
+  -- average lighting over the board
+  local l = light(vector{(x1+x2)/2, (y1+y2)/2}, vector{0,0,1})
+  love.graphics.setColor(255*l, 255*l, 255*l)
+  
+  -- draw single quad
+  love.graphics.push()
+  love.graphics.transform(c1[1], c1[2], c2[1], c2[2], c4[1], c4[2])
+  local img = love.graphics.getImage(texture)
+  love.graphics.draw(img, 0, 0, 0, 1/32, 1/32)
+  love.graphics.pop()
+  
+  -- return corners for compatibility
+  return {c1, c2, c3, c4}
+end
+
 
 --draws the lightbulb
 function render.bulb(action)
