@@ -1,12 +1,19 @@
 
 function love.conf(t)
     t.console = false           -- Attach a console (boolean, Windows only)
-    t.title = "dice3d"        -- The title of the window the game is in (string)
-    t.author = "way"        -- The author of the game (string)
-    t.screen.fullscreen = false -- Enable fullscreen (boolean)
-    t.screen.vsync = false       -- Enable vertical sync (boolean)
-    t.screen.fsaa = 4           -- The number of FSAA-buffers (number)
-    t.screen.height = 600       -- The window height (number)
-    t.screen.width = 800        -- The window width (number)
-    t.version = 0.6             -- The L�VE version this game was made for (number)
+    -- Window settings (LÖVE 0.9.0+)
+    t.window = t.window or {}
+    t.window.title = "dice3d"         -- Window title
+    t.window.fullscreen = false        -- Enable fullscreen
+    t.window.vsync = 1                 -- 0 = disabled, 1 = enabled (LÖVE 11.x)
+    t.window.msaa = 4                  -- Multisample anti-aliasing (replaces fsaa)
+    t.window.height = 600              -- Window height
+    t.window.width = 800               -- Window width
+    t.window.resizable = true          -- Allow the window to be resized by the user
+    t.window.minwidth = 400            -- Minimum window width when resizing
+    t.window.minheight = 300           -- Minimum window height when resizing
+
+    -- Identify the save directory and target LÖVE version
+    t.identity = "dice3d"             -- Save directory name
+    t.version = "11.4"                -- LÖVE version this game targets (string)
 end

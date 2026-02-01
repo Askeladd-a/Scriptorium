@@ -241,7 +241,10 @@ Se fallisce:
 - fallback (A→B→D) con trade-off chiari
 - API `dice3d.*` invariata
 
----
+# Knowledge Base (workspace)
+- docs/toolkit/Game_Design_Toolkit.docx
+- docs/manuals/Basic_Computer_Coding_Lua_Podkovyroff_2024.pdf
+- docs/manuals/Mathematics_of_Game_Development_Enfield_2024.pdf
 
 # Docs/Web policy (per essere “competente”)
 - Prima fonte: codice del repo (truth).

@@ -99,7 +99,7 @@ function round(p,die,star)
     end
     table.insert(newfaces,newface)
   end
-  --az új face-eket is be kell rakni!! majd
+  --az ï¿½j face-eket is be kell rakni!! majd
   for i=1,#star do
     local newface={}
     for j=1,#star do

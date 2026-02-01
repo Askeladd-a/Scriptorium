@@ -18,20 +18,25 @@ draw={}
 -- draws a board of 20x20 tiles, on the coordinates -10,-10 to 10 10
 -- takes the function for the tile images and the lighting mode
 -- returns with the four projected corners of the board 
-function render.board(image, light)
-  
-  --projects the corners of the tiles
+function render.board(image, light, x1, x2, y1, y2)
+  -- optional extents: defaults keep previous behaviour (-10..10)
+  x1 = x1 or -10; x2 = x2 or 10; y1 = y1 or -10; y2 = y2 or 10
+
+  -- store extents for edgeboard and other helpers
+  render.board_extents = {x1,x2,y1,y2}
+
+  -- projects the corners of the tiles
   local points={}
-  for x=-10,10 do    
+  for x=x1,x2 do    
     local row={}
-    for y=-10,10 do  
+    for y=y1,y2 do  
       row[y]={view.project(x,y,0)}
     end
     points[x]=row
   end
 
-  for x=-10,9 do
-    for y=-10,9 do
+  for x=x1,x2-1 do
+    for y=y1,y2-1 do
       local a,b=points[x][y][1],points[x][y][2]
       local c,d=points[x+1][y][1],points[x+1][y][2]
       local e,f=points[x][y+1][1],points[x][y+1][2]
@@ -44,7 +49,7 @@ function render.board(image, light)
       love.graphics.pop()
     end
   end
-  return {points[-10][-10],points[10][-10], points[10][10],points[-10][10]}
+  return {points[x1][y1], points[x2][y1], points[x2][y2], points[x1][y2]}
 end
 
 
@@ -52,7 +57,7 @@ end
 function render.bulb(action)
   local x,y,z,s=view.project(unpack(light-{0,0,2}))
   action(z,function()
-    love.graphics.setBlendMode("additive")
+    love.graphics.setBlendMode("add")
     love.graphics.setColor(255,255,255)
     love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/64,s/64)
     --[[    love.graphics.circle("fill",x,y,s/5,40)
@@ -86,6 +91,7 @@ function render.die(action, die, star)
     
     --light it up
     local strength=die.material(c+star.position, c:norm())
+    local strength=die.material(c+star.position, c:norm())
     local color={ die.color[1]*strength, die.color[2]*strength, die.color[3]*strength, die.color[4] }
     local text={die.text[1]*strength,die.text[2]*strength,die.text[3]*strength}
     local front=c..(1*c+star.position-cam)<=0
@@ -96,6 +102,7 @@ function render.die(action, die, star)
         love.graphics.polygon("fill",unpack(xy))
         love.graphics.setColor(unpack(text))
         die.image(i,unpack(xy))
+        -- outline removed (can cause rendering artifacts); material indicator will be drawn as a dot
       elseif color[4] and color[4]<255 then
         love.graphics.setColor(unpack(text))
         die.image(i,unpack(xy))
@@ -104,6 +111,8 @@ function render.die(action, die, star)
       end
     end) 
   end
+
+  
 end
 
 
@@ -154,11 +163,13 @@ end
   --draws around a board
   --draw the void with black to remove shadows extending from the board
 function render.edgeboard()
+  local x1,x2,y1,y2 = -10,10,-10,10
+  if render.board_extents then x1,x2,y1,y2 = unpack(render.board_extents) end
   local corners={
-    {view.project(-10,-10,0)},
-    {view.project(-10,10,0)},
-    {view.project(10,10,0)},
-    {view.project(10,-10,0)}
+    {view.project(x1,y1,0)},
+    {view.project(x1,y2,0)},
+    {view.project(x2,y2,0)},
+    {view.project(x2,y1,0)}
   }
   love.graphics.setColor(0,0,0)
   
