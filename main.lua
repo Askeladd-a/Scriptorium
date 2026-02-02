@@ -1,17 +1,13 @@
 dbg={}
 
-require"base"
-require"loveplus"
-require"vector"
-
-require"render"
-require"stars"
+require"core"     -- base utilities + vectors/rotations
+require"render"   -- rendering + LÖVE extensions
+require"physics"  -- simulation (box, star, materials)
 require"geometry"
 require"view"
 require"light"
-materials = require"materials"
 
-require "default/config"
+require "resources/config"
 
 -- Create four D6 dice by default for playtesting
 dice = {}
@@ -53,16 +49,6 @@ local function build_material_list()
   end
 end
 
--- Helper: get the material preset name for a star (by identity)
-local function get_material_name(star)
-  if not star or not star.material then return nil end
-  if materials and materials.presets then
-    for name,p in pairs(materials.presets) do if p == star.material then return name end end
-  end
-  -- fallback: if the material itself has a name field, use it
-  return star.material.name
-end
-
 -- Drag/grab feature removed: input-based grabbing is disabled to allow programmatic rolls only.
 -- If needed, programmatic roll helper is provided below: rollAllDice().
 
@@ -74,114 +60,13 @@ function convert(sx, sy)
   return (sx - cx) / scale, (sy - cy) / scale
 end
 
--- Pick the topmost die under screen coords (returns die or nil)
-local function pick_focused_at_screen(sx, sy)
-  if not view then return nil end
-  local d = {}
-  for i=1,#dice do
-    local px,py,pz,p = view.project(unpack(dice[i].star.position))
-    table.insert(d,{dice[i], px, py, pz, p})
-  end
-  table.sort(d, function(a,b) return a[4] > b[4] end)
-  local wx,wy = convert(sx, sy)
-  for i=1,#d do
-    local dx,dy = wx - d[i][2], wy - d[i][3]
-    local size = d[i][5]
-    if math.abs(dx) < size and math.abs(dy) < size then
-      return d[i][1]
-    end
-  end
-  return nil
-end
-
--- Adjust the grabbed star's world x,y so that its projection matches target_px/py at given lift z
--- Compute a world position (x,y) for star such that view.project(x,y,lift) ~= target_px/py.
--- Returns nx,ny (world coords). Does not mutate velocities; caller decides smoothing.
-local function snap_star_to_projection(star, target_px, target_py, lift, dt)
-  local max_iters = 4
-  local eps = 0.001
-  local alpha = 1.0
-  local nx, ny = star.position[1], star.position[2]
-  for iter=1,max_iters do
-    local x,y,z = nx, ny, lift
-    local px,py = view.project(x,y,z)
-    local ex,ey = target_px - px, target_py - py
-    if math.sqrt(ex*ex + ey*ey) < 1e-4 then break end
-
-    -- finite difference jacobian
-    local px_dx,py_dx = view.project(x+eps,y,z)
-    local px_dy,py_dy = view.project(x,y+eps,z)
-    local j11 = (px_dx - px)/eps
-    local j12 = (px_dy - px)/eps
-    local j21 = (py_dx - py)/eps
-    local j22 = (py_dy - py)/eps
-
-    local det = j11*j22 - j12*j21
-    if math.abs(det) < 1e-8 then break end
-    local dx = (  ( j22*ex - j12*ey) / det) * alpha
-    local dy = (  ( -j21*ex + j11*ey) / det) * alpha
-
-    -- clamp step to avoid overshoot
-    local maxstep = 0.5 * (dt*60 + 0.1)
-    if dx > maxstep then dx = maxstep end
-    if dx < -maxstep then dx = -maxstep end
-    if dy > maxstep then dy = maxstep end
-    if dy < -maxstep then dy = -maxstep end
-
-    nx = nx + dx
-    ny = ny + dy
-  end
-  return nx, ny
-end
-
--- Compute velocity (vx,vy) from samples using linear regression over time
--- Weighted linear regression velocity estimator (gives more weight to recent samples)
-local function compute_velocity_from_samples(samples)
-  local n = #samples
-  if n < 2 then return nil end
-  -- choose time constant (seconds) for exponential weighting
-  local tau = 0.08
-  local last_t = samples[#samples].t
-  local wsum = 0
-  local t_mean = 0
-  local x_mean = 0
-  local y_mean = 0
-  local ws = {}
-  for i=1,n do
-    local w = math.exp((samples[i].t - last_t)/tau)
-    ws[i] = w
-    wsum = wsum + w
-    t_mean = t_mean + w * samples[i].t
-    x_mean = x_mean + w * samples[i].pos[1]
-    y_mean = y_mean + w * samples[i].pos[2]
-  end
-  if wsum == 0 then return nil end
-  t_mean = t_mean / wsum; x_mean = x_mean / wsum; y_mean = y_mean / wsum
-
-  local num_x, num_y, denom = 0,0,0
-  for i=1,n do
-    local dt = samples[i].t - t_mean
-    num_x = num_x + ws[i] * dt * (samples[i].pos[1] - x_mean)
-    num_y = num_y + ws[i] * dt * (samples[i].pos[2] - y_mean)
-    denom = denom + ws[i] * dt * dt
-  end
-  if math.abs(denom) < 1e-6 then return nil end
-  local vx = num_x / denom
-  local vy = num_y / denom
-  return vector{vx, vy, 0}
-end
-
 function love.load()
-  --feed the simulation
   -- box: x,y,z, gravity, bounce(restitution), friction, dt
-  -- increase gravity to make dice fall faster; slightly bump restitution for liveliness
-  -- wood-like physical parameters (tuned to avoid overly bouncy behavior)
-  -- gravity=25, restitution(bounce)=0.25, friction=0.75, dt=0.01
+  -- wood-like physical parameters
   box:set(10,10,10,25,0.25,0.75,0.01)
   -- slightly stronger global damping to dissipate energy and avoid ball-like rebounds
   box.linear_damping = 0.12
   box.angular_damping = 0.12
-  ---round(0.2,dice[2].die,dice[2].star)
 
   for i=1,#dice do box[i]=dice[i].star end
   -- seed randomness and perform an initial programmatic roll
@@ -196,10 +81,6 @@ function love.load()
   -- prepare rectangles (screen coords) for each die's material button; will be laid out in love.draw if needed
   material_buttons = {}
 end
-
--- Track previous inside/outside state per die for automatic investigation
-local prev_inside = {}
-
 
 -- Input-based grabbing has been intentionally disabled.
 function love.mousepressed(x,y,b)
@@ -270,35 +151,6 @@ function love.update(dt)
       end
     end
     light.follow(focused and focused.star,dt)
-    -- automatic investigation: detect IN/OUT transitions and log details
-    for i=1,#dice do
-      local s = dice[i].star
-      local inside_x = s.position[1] >= -box.x and s.position[1] <= box.x
-      local inside_y = s.position[2] >= -box.y and s.position[2] <= box.y
-      local inside_z = s.position[3] >= 0 and s.position[3] <= box.z
-      local inside = inside_x and inside_y and inside_z
-      if prev_inside[i] == nil then prev_inside[i] = inside end
-      if prev_inside[i] ~= inside then
-        local t = love.timer.getTime()
-        local reason = {}
-        if not inside_x then table.insert(reason, string.format("x=%.2f", s.position[1])) end
-        if not inside_y then table.insert(reason, string.format("y=%.2f", s.position[2])) end
-        if not inside_z then table.insert(reason, string.format("z=%.2f", s.position[3])) end
-        local vel = s.velocity
-        local logline = string.format("[physics] time=%.3f die=%d %s->%s reason=%s pos=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f)",
-          t, i, tostring(prev_inside[i]), tostring(inside), table.concat(reason,","), s.position[1],s.position[2],s.position[3], vel[1],vel[2],vel[3])
-        -- append to log file so we can collect diagnostics even when LÖVE runs detached
-        local fh, ferr = io.open("physics_log.txt", "a")
-        if fh then
-          fh:write(logline .. "\n")
-          fh:close()
-        else
-          -- fallback to console if file cannot be opened
-          print("[physics:log-error]", ferr, logline)
-        end
-        prev_inside[i] = inside
-      end
-    end
     -- grab feature removed: no input-driven follow logic
   end
   
@@ -390,14 +242,23 @@ function love.draw()
   for i=1,#dice do render.shadow(function(z,f) f() end, dice[i].die, dice[i].star) end
   render.edgeboard()
   
-  -- Draw 3D raised border to make it look like a dice tray
-  render.tray_border(0.8, 1.5)  -- border_width=0.8, border_height=1.5
+  -- Draw tray border FIRST (no stencil, always visible)
+  render.clear()
+  render.tray_border(render.zbuffer, 0.8, 1.5)  -- border_width=0.8, border_height=1.5
+  render.paint()
   
-  --dice
+  -- Set up stencil: mark the tray interior (floor + inner walls) where dice can be drawn
+  love.graphics.stencil(function()
+    render.stencil_board_area(1.5)  -- same border_height as tray_border
+  end, "replace", 1)
+  
+  -- Draw dice ONLY inside the stencil (inside the tray)
+  love.graphics.setStencilTest("greater", 0)
   render.clear()
   render.bulb(render.zbuffer) --light source
   for i=1,#dice do render.die(render.zbuffer, dice[i].die, dice[i].star) end
   render.paint()
+  love.graphics.setStencilTest()  -- disable stencil
 
   -- (debug overlay removed)
 

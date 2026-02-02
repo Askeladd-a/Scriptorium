@@ -1,5 +1,5 @@
 require "view"
-require "vector"
+require "core"
 
 light=vector{0,0,15}
 

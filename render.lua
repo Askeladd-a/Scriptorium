@@ -1,5 +1,104 @@
+-- render.lua
+-- Consolidated from: render.lua + loveplus.lua
+-- All rendering, z-buffer, LÖVE extensions
 
+--------------------------------------------------------------------------------
+-- LÖVE EXTENSIONS (from loveplus.lua)
+--------------------------------------------------------------------------------
+-- Compatibility: provide math.atan2 if missing (Lua 5.1/5.2 have math.atan(y, x))
+if rawget(math, "atan2") == nil then
+  rawset(math, "atan2", function(y, x)
+    return math.atan(y, x)
+  end)
+end
+
+--applies a transformation that maps 
+--  0,0 => ox, oy
+--  1,0 => xx, xy
+--  0,1 => yx, yy
+-- via love.graphics.translate, .rotate and .scale
+
+function love.graphics.transform(ox, oy, xx, xy, yx, yy)
+  
+  local ex, ey, fx,fy = xx-ox, xy-oy, yx-ox, yy-oy
+  if ex*fy<ey*fx then ex,ey,fx,fy=fx,fy,ex,ey end
+  local e,f = math.sqrt(ex*ex+ey*ey), math.sqrt(fx*fx+fy*fy)
+  
+  ex,ey = ex/e, ey/e
+  fx,fy = fx/f, fy/f
+  
+  local desiredOrientation=math.atan2(ey+fy,ex+fx)
+  local desiredAngle=math.acos(ex*fx+ey*fy)/2
+  local z=math.tan(desiredAngle)
+  local distortion=math.sqrt((1+z*z)/2)
+  
+  love.graphics.translate(ox, oy)
+  love.graphics.rotate(desiredOrientation)
+  love.graphics.scale(1, z)
+  love.graphics.rotate(-math.pi/4)
+  love.graphics.scale(e/distortion,f/distortion)
+
+end
+
+--cached load for images
+local imageCache = {}
+function love.graphics.getImage(filename)
+  if not imageCache[filename] then
+    imageCache[filename]=love.graphics.newImage(filename)
+  end
+  return imageCache[filename]
+end
+
+
+--a polygon function that unpacks a list of points for a polygon
+local lovepolygon=love.graphics.polygon
+function love.graphics.polygon(mode,p,...)
+  if type(p)=="number" then return lovepolygon(mode,p,...) end
+  local pts={}
+  for i=1,#p do table.insert(pts,p[i][1]) table.insert(pts,p[i][2]) end
+  return lovepolygon(mode,unpack(pts))
+end
+
+
+function love.graphics.dbg()
+  if not dbg then return end
+  love.graphics.setColor(255,255,255)
+  local x,y=5,15
+  for _,s in ipairs(pretty.table(dbg,4)) do
+    love.graphics.print(s,x,y)
+    y=y+15
+    if y>love.graphics.getHeight()-15 then x,y=x+200,15 end
+  end
+end
+
+local lastx,lasty
+function love.mouse.delta()
+  local x,y=love.mouse.getPosition()
+  lastx,lasty, x,y = x,y, x-(lastx or x),y-(lasty or y)
+  return x,y
+end
+
+-- Compatibility wrapper for setColor: accept 0..255 or 0..1 inputs.
+do
+  local _setColor = love.graphics.setColor
+  function love.graphics.setColor(r,g,b,a)
+    if type(r)=="table" then
+      local t=r
+      r,g,b,a = t[1],t[2],t[3],t[4]
+    end
+    if r and (r>1 or (g or 0)>1 or (b or 0)>1 or (a or 0)>1) then
+      return _setColor((r or 0)/255,(g or 0)/255,(b or 0)/255,(a==nil and 1) or a/255)
+    else
+      return _setColor(r,g,b,a)
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- RENDER MODULE
+--------------------------------------------------------------------------------
 render={}
+local tray_wood_texture = nil
 
 --z ordered rendering of elements
 function render.zbuffer(z,action)
@@ -12,8 +111,6 @@ end
 function render.clear()
   table.clear(render)
 end
-draw={}
-
 
 -- draws a board of 20x20 tiles, on the coordinates -10,-10 to 10 10
 -- takes the function for the tile images and the lighting mode
@@ -52,35 +149,6 @@ function render.board(image, light, x1, x2, y1, y2)
   return {points[x1][y1], points[x2][y1], points[x2][y2], points[x1][y2]}
 end
 
--- Single quad board: renders the entire plane as ONE quad (no tile boundaries = no jitter!)
-function render.board_single(texture, light, x1, x2, y1, y2)
-  -- optional extents: defaults keep previous behaviour (-10..10)
-  x1 = x1 or -10; x2 = x2 or 10; y1 = y1 or -10; y2 = y2 or 10
-  
-  -- store extents for edgeboard and other helpers
-  render.board_extents = {x1,x2,y1,y2}
-  
-  -- project the 4 corners of the entire plane
-  local c1 = {view.project(x1, y1, 0)}  -- bottom-left
-  local c2 = {view.project(x2, y1, 0)}  -- bottom-right
-  local c3 = {view.project(x2, y2, 0)}  -- top-right
-  local c4 = {view.project(x1, y2, 0)}  -- top-left
-  
-  -- average lighting over the board
-  local l = light(vector{(x1+x2)/2, (y1+y2)/2}, vector{0,0,1})
-  love.graphics.setColor(255*l, 255*l, 255*l)
-  
-  -- draw single quad
-  love.graphics.push()
-  love.graphics.transform(c1[1], c1[2], c2[1], c2[2], c4[1], c4[2])
-  local img = love.graphics.getImage(texture)
-  love.graphics.draw(img, 0, 0, 0, 1/32, 1/32)
-  love.graphics.pop()
-  
-  -- return corners for compatibility
-  return {c1, c2, c3, c4}
-end
-
 
 --draws the lightbulb
 function render.bulb(action)
@@ -88,7 +156,7 @@ function render.bulb(action)
   action(z,function()
     love.graphics.setBlendMode("add")
     love.graphics.setColor(255,255,255)
-    love.graphics.draw(love.graphics.getImage("default/bulb.png"),x,y,0,s/64,s/64)
+    love.graphics.draw(love.graphics.getImage("resources/bulb.png"),x,y,0,s/64,s/64)
     --[[    love.graphics.circle("fill",x,y,s/5,40)
     love.graphics.circle("line",x,y,s/5,40)
     ]]
@@ -189,6 +257,63 @@ function render.shadow(action,die, star)
   end)
 end  
 
+-- Stencil function: draws the entire tray interior volume for masking
+-- Includes floor + all 4 inner walls to properly mask dice at any camera angle
+function render.stencil_board_area(border_height)
+  border_height = border_height or 1.5
+  local x1,x2,y1,y2 = -10,10,-10,10
+  if render.board_extents then x1,x2,y1,y2 = unpack(render.board_extents) end
+  
+  -- Project floor corners
+  local floor = {
+    {view.project(x1,y1,0)},
+    {view.project(x2,y1,0)},
+    {view.project(x2,y2,0)},
+    {view.project(x1,y2,0)}
+  }
+  
+  -- Project inner top corners (top edge of inner walls)
+  local inner_top = {
+    {view.project(x1, y1, border_height)},
+    {view.project(x2, y1, border_height)},
+    {view.project(x2, y2, border_height)},
+    {view.project(x1, y2, border_height)}
+  }
+  
+  -- Draw floor
+  love.graphics.polygon("fill", 
+    floor[1][1], floor[1][2],
+    floor[2][1], floor[2][2],
+    floor[3][1], floor[3][2],
+    floor[4][1], floor[4][2])
+  
+  -- Draw all 4 inner walls (these extend the stencil area upward)
+  -- Front inner wall (y1 side)
+  love.graphics.polygon("fill",
+    floor[1][1], floor[1][2],
+    floor[2][1], floor[2][2],
+    inner_top[2][1], inner_top[2][2],
+    inner_top[1][1], inner_top[1][2])
+  -- Right inner wall (x2 side)
+  love.graphics.polygon("fill",
+    floor[2][1], floor[2][2],
+    floor[3][1], floor[3][2],
+    inner_top[3][1], inner_top[3][2],
+    inner_top[2][1], inner_top[2][2])
+  -- Back inner wall (y2 side)
+  love.graphics.polygon("fill",
+    floor[3][1], floor[3][2],
+    floor[4][1], floor[4][2],
+    inner_top[4][1], inner_top[4][2],
+    inner_top[3][1], inner_top[3][2])
+  -- Left inner wall (x1 side)
+  love.graphics.polygon("fill",
+    floor[4][1], floor[4][2],
+    floor[1][1], floor[1][2],
+    inner_top[1][1], inner_top[1][2],
+    inner_top[4][1], inner_top[4][2])
+end
+
   --draws around a board
   --draw the void with black to remove shadows extending from the board
 function render.edgeboard()
@@ -220,7 +345,17 @@ function render.edgeboard()
 end
 
 -- Draws a 3D raised border around the board to simulate a dice tray
-function render.tray_border(border_width, border_height, border_color)
+-- Now integrates with z-buffering for proper depth sorting with dice
+function render.tray_border(action, border_width, border_height, border_color)
+  -- If called without action (backward compat), draw immediately
+  if type(action) ~= "function" then
+    -- Shift args: action was actually border_width
+    border_color = border_height
+    border_height = border_width
+    border_width = action
+    action = function(z, fn) fn() end  -- immediate draw
+  end
+  
   border_width = border_width or 0.8   -- width of the border rim
   border_height = border_height or 1.2 -- height of the border walls
   -- Colors in 0-255 format (dark wood brown)
@@ -232,11 +367,42 @@ function render.tray_border(border_width, border_height, border_color)
   -- Outer edge coordinates (board + border width)
   local ox1, ox2, oy1, oy2 = x1 - border_width, x2 + border_width, y1 - border_width, y2 + border_width
   
-  -- Helper: draw a quad given 4 corners (in screen coords)
+  -- Helper: draw a solid color quad (no texture)
+  -- Use z_min (closest to camera) for proper occlusion
   local function draw_quad(c1, c2, c3, c4, color, shade)
-    local r, g, b = color[1] * shade, color[2] * shade, color[3] * shade
-    love.graphics.setColor(r, g, b, 255)  -- explicit alpha=255 for full opacity
-    love.graphics.polygon("fill", c1[1], c1[2], c2[1], c2[2], c3[1], c3[2], c4[1], c4[2])
+    local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
+    action(z_min, function()
+      local r, g, b = color[1] * shade, color[2] * shade, color[3] * shade
+      love.graphics.setColor(r, g, b, 255)
+      love.graphics.polygon("fill", c1[1], c1[2], c2[1], c2[2], c3[1], c3[2], c4[1], c4[2])
+    end)
+  end
+  
+  -- Helper: draw a textured quad using Mesh for correct UV mapping
+  -- Use z_min (closest to camera) for proper occlusion
+  local function draw_textured_quad(c1, c2, c3, c4, color, shade, texture)
+    local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
+    action(z_min, function()
+      local r, g, b = color[1] * shade / 255, color[2] * shade / 255, color[3] * shade / 255
+      -- Create mesh with 4 vertices: {x, y, u, v, r, g, b, a}
+      -- UV coords: c1=top-left(0,0), c2=top-right(1,0), c3=bottom-right(1,1), c4=bottom-left(0,1)
+      local vertices = {
+        {c1[1], c1[2], 0, 0, r, g, b, 1},  -- top-left
+        {c2[1], c2[2], 1, 0, r, g, b, 1},  -- top-right
+        {c3[1], c3[2], 1, 1, r, g, b, 1},  -- bottom-right
+        {c4[1], c4[2], 0, 1, r, g, b, 1},  -- bottom-left
+      }
+      local mesh = love.graphics.newMesh(vertices, "fan", "stream")
+      mesh:setTexture(texture)
+      love.graphics.setColor(1, 1, 1, 1)
+      love.graphics.draw(mesh)
+    end)
+  end
+  
+  -- Lazy load texture at the start
+  if not tray_wood_texture then
+    local ok, img = pcall(love.graphics.newImage, "resources/wood.png")
+    if ok then tray_wood_texture = img end
   end
   
   -- Project all 16 key points (inner/outer at z=0 and z=border_height)
@@ -265,31 +431,43 @@ function render.tray_border(border_width, border_height, border_color)
     {view.project(ox1, oy2, border_height)}
   }
   
-  -- Draw the 4 outer walls (vertical faces on outside)
-  -- Front wall (y1 side - usually bottom of screen)
-  draw_quad(outer_bottom[1], outer_bottom[2], outer_top[2], outer_top[1], border_color, 0.7)
-  -- Right wall (x2 side)
-  draw_quad(outer_bottom[2], outer_bottom[3], outer_top[3], outer_top[2], border_color, 0.85)
-  -- Back wall (y2 side - usually top of screen)
-  draw_quad(outer_bottom[3], outer_bottom[4], outer_top[4], outer_top[3], border_color, 1.0)
-  -- Left wall (x1 side)
-  draw_quad(outer_bottom[4], outer_bottom[1], outer_top[1], outer_top[4], border_color, 0.75)
+  -- Draw the 4 outer walls (vertical faces on outside) with texture
+  if tray_wood_texture then
+    draw_textured_quad(outer_bottom[1], outer_bottom[2], outer_top[2], outer_top[1], border_color, 180, tray_wood_texture)
+    draw_textured_quad(outer_bottom[2], outer_bottom[3], outer_top[3], outer_top[2], border_color, 220, tray_wood_texture)
+    draw_textured_quad(outer_bottom[3], outer_bottom[4], outer_top[4], outer_top[3], border_color, 255, tray_wood_texture)
+    draw_textured_quad(outer_bottom[4], outer_bottom[1], outer_top[1], outer_top[4], border_color, 190, tray_wood_texture)
+  else
+    draw_quad(outer_bottom[1], outer_bottom[2], outer_top[2], outer_top[1], border_color, 0.7)
+    draw_quad(outer_bottom[2], outer_bottom[3], outer_top[3], outer_top[2], border_color, 0.85)
+    draw_quad(outer_bottom[3], outer_bottom[4], outer_top[4], outer_top[3], border_color, 1.0)
+    draw_quad(outer_bottom[4], outer_bottom[1], outer_top[1], outer_top[4], border_color, 0.75)
+  end
   
-  -- Draw the 4 inner walls (vertical faces on inside, facing the dice)
-  -- These are slightly darker as they're in shadow
-  draw_quad(inner_bottom[2], inner_bottom[1], inner_top[1], inner_top[2], border_color, 0.5)
-  draw_quad(inner_bottom[3], inner_bottom[2], inner_top[2], inner_top[3], border_color, 0.55)
-  draw_quad(inner_bottom[4], inner_bottom[3], inner_top[3], inner_top[4], border_color, 0.6)
-  draw_quad(inner_bottom[1], inner_bottom[4], inner_top[4], inner_top[1], border_color, 0.5)
+  -- Draw the 4 inner walls (vertical faces on inside, facing the dice) with texture
+  if tray_wood_texture then
+    draw_textured_quad(inner_bottom[2], inner_bottom[1], inner_top[1], inner_top[2], border_color, 130, tray_wood_texture)
+    draw_textured_quad(inner_bottom[3], inner_bottom[2], inner_top[2], inner_top[3], border_color, 140, tray_wood_texture)
+    draw_textured_quad(inner_bottom[4], inner_bottom[3], inner_top[3], inner_top[4], border_color, 150, tray_wood_texture)
+    draw_textured_quad(inner_bottom[1], inner_bottom[4], inner_top[4], inner_top[1], border_color, 130, tray_wood_texture)
+  else
+    draw_quad(inner_bottom[2], inner_bottom[1], inner_top[1], inner_top[2], border_color, 0.5)
+    draw_quad(inner_bottom[3], inner_bottom[2], inner_top[2], inner_top[3], border_color, 0.55)
+    draw_quad(inner_bottom[4], inner_bottom[3], inner_top[3], inner_top[4], border_color, 0.6)
+    draw_quad(inner_bottom[1], inner_bottom[4], inner_top[4], inner_top[1], border_color, 0.5)
+  end
   
-  -- Draw the top surface (horizontal rim)
-  -- Front rim (y1 side)
-  draw_quad(outer_top[1], outer_top[2], inner_top[2], inner_top[1], border_color, 0.9)
-  -- Right rim (x2 side)  
-  draw_quad(outer_top[2], outer_top[3], inner_top[3], inner_top[2], border_color, 0.95)
-  -- Back rim (y2 side)
-  draw_quad(outer_top[3], outer_top[4], inner_top[4], inner_top[3], border_color, 1.0)
-  -- Left rim (x1 side)
-  draw_quad(outer_top[4], outer_top[1], inner_top[1], inner_top[4], border_color, 0.88)
+  -- Draw the top surface (horizontal rim) with wood texture
+  if tray_wood_texture then
+    draw_textured_quad(outer_top[1], outer_top[2], inner_top[2], inner_top[1], border_color, 230, tray_wood_texture)
+    draw_textured_quad(outer_top[2], outer_top[3], inner_top[3], inner_top[2], border_color, 240, tray_wood_texture)
+    draw_textured_quad(outer_top[3], outer_top[4], inner_top[4], inner_top[3], border_color, 255, tray_wood_texture)
+    draw_textured_quad(outer_top[4], outer_top[1], inner_top[1], inner_top[4], border_color, 225, tray_wood_texture)
+  else
+    draw_quad(outer_top[1], outer_top[2], inner_top[2], inner_top[1], border_color, 0.9)
+    draw_quad(outer_top[2], outer_top[3], inner_top[3], inner_top[2], border_color, 0.95)
+    draw_quad(outer_top[3], outer_top[4], inner_top[4], inner_top[3], border_color, 1.0)
+    draw_quad(outer_top[4], outer_top[1], inner_top[1], inner_top[4], border_color, 0.88)
+  end
 end
 
