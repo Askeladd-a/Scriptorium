@@ -13,7 +13,7 @@ d6= {
 }
 function d6.image(n,a,b,c,d,e,f,g,h)
   if n>6 then return end
-  local img=love.graphics.getImage("resources/"..n..".png")
+  local img=love.graphics.getImage("resources/dice/"..n..".png")
   love.graphics.push()
   love.graphics.transform(a,b,c,d,g,h)
   love.graphics.draw(img,0,0,0,1/img:getWidth(),1/img:getHeight())

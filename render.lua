@@ -44,7 +44,11 @@ end
 local imageCache = {}
 function love.graphics.getImage(filename)
   if not imageCache[filename] then
-    imageCache[filename]=love.graphics.newImage(filename)
+    local img = love.graphics.newImage(filename)
+    -- Use linear filtering for smooth scaling and clamp to avoid edge artifacts
+    img:setFilter("linear", "linear")
+    img:setWrap("clamp", "clamp")
+    imageCache[filename] = img
   end
   return imageCache[filename]
 end
@@ -112,7 +116,7 @@ function render.clear()
   table.clear(render)
 end
 
--- draws a board of 20x20 tiles, on the coordinates -10,-10 to 10 10
+-- draws a board as a tessellated grid of quads (perspective-correct texturing)
 -- takes the function for the tile images and the lighting mode
 -- returns with the four projected corners of the board 
 function render.board(image, light, x1, x2, y1, y2)
@@ -122,31 +126,66 @@ function render.board(image, light, x1, x2, y1, y2)
   -- store extents for edgeboard and other helpers
   render.board_extents = {x1,x2,y1,y2}
 
-  -- projects the corners of the tiles
-  local points={}
-  for x=x1,x2 do    
-    local row={}
-    for y=y1,y2 do  
-      row[y]={view.project(x,y,0)}
+  -- Tessellation grid size (more subdivisions = less perspective distortion)
+  local subdiv = 8
+  
+  -- Load texture once
+  local tex = love.graphics.getImage(image(0,0))
+  
+  -- Calculate average lighting for the floor
+  local l = light(vector{(x1+x2)/2, (y1+y2)/2}, vector{0,0,1})
+  local r, g, b = l, l, l
+  
+  -- Build vertices for tessellated grid
+  local vertices = {}
+  local stepX = (x2 - x1) / subdiv
+  local stepY = (y2 - y1) / subdiv
+  local stepU = 1 / subdiv
+  local stepV = 1 / subdiv
+  
+  for j = 0, subdiv - 1 do
+    for i = 0, subdiv - 1 do
+      -- World coordinates for this cell
+      local wx1 = x1 + i * stepX
+      local wx2 = x1 + (i + 1) * stepX
+      local wy1 = y1 + j * stepY
+      local wy2 = y1 + (j + 1) * stepY
+      
+      -- UV coordinates for this cell
+      local cu1 = i * stepU
+      local cu2 = (i + 1) * stepU
+      local cv1 = j * stepV
+      local cv2 = (j + 1) * stepV
+      
+      -- Project corners
+      local p1 = {view.project(wx1, wy1, 0)}
+      local p2 = {view.project(wx2, wy1, 0)}
+      local p3 = {view.project(wx2, wy2, 0)}
+      local p4 = {view.project(wx1, wy2, 0)}
+      
+      -- Add two triangles for this quad
+      -- Triangle 1: p1, p2, p3
+      table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
+      table.insert(vertices, {p2[1], p2[2], cu2, cv1, r, g, b, 1})
+      table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
+      -- Triangle 2: p1, p3, p4
+      table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
+      table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
+      table.insert(vertices, {p4[1], p4[2], cu1, cv2, r, g, b, 1})
     end
-    points[x]=row
   end
-
-  for x=x1,x2-1 do
-    for y=y1,y2-1 do
-      local a,b=points[x][y][1],points[x][y][2]
-      local c,d=points[x+1][y][1],points[x+1][y][2]
-      local e,f=points[x][y+1][1],points[x][y+1][2]
-      local l=light(vector{x,y}, vector{0,0,1})
-      love.graphics.setColor(255*l,255*l,255*l)
-      love.graphics.push()
-      love.graphics.transform(a,b,c,d,e,f)
-      local image =love.graphics.getImage(image(x,y))
-      love.graphics.draw(image,0,0,0,1/32,1/32)
-      love.graphics.pop()
-    end
-  end
-  return {points[x1][y1], points[x2][y1], points[x2][y2], points[x1][y2]}
+  
+  local mesh = love.graphics.newMesh(vertices, "triangles", "stream")
+  mesh:setTexture(tex)
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(mesh)
+  
+  -- Return outer corners for compatibility
+  local c1 = {view.project(x1, y1, 0)}
+  local c2 = {view.project(x2, y1, 0)}
+  local c3 = {view.project(x2, y2, 0)}
+  local c4 = {view.project(x1, y2, 0)}
+  return {{c1[1],c1[2]}, {c2[1],c2[2]}, {c3[1],c3[2]}, {c4[1],c4[2]}}
 end
 
 
@@ -156,7 +195,7 @@ function render.bulb(action)
   action(z,function()
     love.graphics.setBlendMode("add")
     love.graphics.setColor(255,255,255)
-    love.graphics.draw(love.graphics.getImage("resources/bulb.png"),x,y,0,s/64,s/64)
+    love.graphics.draw(love.graphics.getImage("resources/ui/bulb.png"),x,y,0,s/64,s/64)
     --[[    love.graphics.circle("fill",x,y,s/5,40)
     love.graphics.circle("line",x,y,s/5,40)
     ]]
@@ -345,7 +384,7 @@ function render.edgeboard()
 end
 
 -- Draws a 3D raised border around the board to simulate a dice tray
--- Now integrates with z-buffering for proper depth sorting with dice
+-- Now with tessellation for correct depth sorting from all angles
 function render.tray_border(action, border_width, border_height, border_color)
   -- If called without action (backward compat), draw immediately
   if type(action) ~= "function" then
@@ -367,8 +406,10 @@ function render.tray_border(action, border_width, border_height, border_color)
   -- Outer edge coordinates (board + border width)
   local ox1, ox2, oy1, oy2 = x1 - border_width, x2 + border_width, y1 - border_width, y2 + border_width
   
-  -- Helper: draw a solid color quad (no texture)
-  -- Use z_min (closest to camera) for proper occlusion
+  -- Tessellation segments per wall (more = better depth sorting)
+  local segments = 8
+  
+  -- Helper: draw a solid color quad
   local function draw_quad(c1, c2, c3, c4, color, shade)
     local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
     action(z_min, function()
@@ -378,19 +419,17 @@ function render.tray_border(action, border_width, border_height, border_color)
     end)
   end
   
-  -- Helper: draw a textured quad using Mesh for correct UV mapping
-  -- Use z_min (closest to camera) for proper occlusion
-  local function draw_textured_quad(c1, c2, c3, c4, color, shade, texture)
+  -- Helper: draw a textured quad using Mesh
+  local function draw_textured_quad(c1, c2, c3, c4, color, shade, texture, u1, v1, u2, v2)
+    u1 = u1 or 0; v1 = v1 or 0; u2 = u2 or 1; v2 = v2 or 1
     local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
     action(z_min, function()
       local r, g, b = color[1] * shade / 255, color[2] * shade / 255, color[3] * shade / 255
-      -- Create mesh with 4 vertices: {x, y, u, v, r, g, b, a}
-      -- UV coords: c1=top-left(0,0), c2=top-right(1,0), c3=bottom-right(1,1), c4=bottom-left(0,1)
       local vertices = {
-        {c1[1], c1[2], 0, 0, r, g, b, 1},  -- top-left
-        {c2[1], c2[2], 1, 0, r, g, b, 1},  -- top-right
-        {c3[1], c3[2], 1, 1, r, g, b, 1},  -- bottom-right
-        {c4[1], c4[2], 0, 1, r, g, b, 1},  -- bottom-left
+        {c1[1], c1[2], u1, v1, r, g, b, 1},
+        {c2[1], c2[2], u2, v1, r, g, b, 1},
+        {c3[1], c3[2], u2, v2, r, g, b, 1},
+        {c4[1], c4[2], u1, v2, r, g, b, 1},
       }
       local mesh = love.graphics.newMesh(vertices, "fan", "stream")
       mesh:setTexture(texture)
@@ -399,75 +438,120 @@ function render.tray_border(action, border_width, border_height, border_color)
     end)
   end
   
-  -- Lazy load texture at the start
+  -- Helper: linear interpolation
+  local function lerp(a, b, t) return a + (b - a) * t end
+  
+  -- Helper: draw a tessellated wall (from point A to point B, with inner/outer and bottom/top)
+  local function draw_wall_tessellated(ax_in, ay_in, bx_in, by_in, ax_out, ay_out, bx_out, by_out, z_bot, z_top, color, shade, texture)
+    for i = 0, segments - 1 do
+      local t1 = i / segments
+      local t2 = (i + 1) / segments
+      
+      -- Inner edge points
+      local ix1, iy1 = lerp(ax_in, bx_in, t1), lerp(ay_in, by_in, t1)
+      local ix2, iy2 = lerp(ax_in, bx_in, t2), lerp(ay_in, by_in, t2)
+      
+      -- Outer edge points
+      local ox1_seg, oy1_seg = lerp(ax_out, bx_out, t1), lerp(ay_out, by_out, t1)
+      local ox2_seg, oy2_seg = lerp(ax_out, bx_out, t2), lerp(ay_out, by_out, t2)
+      
+      -- UV coordinates for this segment
+      local u1, u2 = t1, t2
+      
+      if texture then
+        -- Outer wall segment (vertical face)
+        local p1 = {view.project(ox1_seg, oy1_seg, z_bot)}
+        local p2 = {view.project(ox2_seg, oy2_seg, z_bot)}
+        local p3 = {view.project(ox2_seg, oy2_seg, z_top)}
+        local p4 = {view.project(ox1_seg, oy1_seg, z_top)}
+        draw_textured_quad(p1, p2, p3, p4, color, shade, texture, u1, 1, u2, 0)
+      else
+        local p1 = {view.project(ox1_seg, oy1_seg, z_bot)}
+        local p2 = {view.project(ox2_seg, oy2_seg, z_bot)}
+        local p3 = {view.project(ox2_seg, oy2_seg, z_top)}
+        local p4 = {view.project(ox1_seg, oy1_seg, z_top)}
+        draw_quad(p1, p2, p3, p4, color, shade)
+      end
+    end
+  end
+  
+  -- Helper: draw inner wall tessellated (facing inward)
+  local function draw_inner_wall_tessellated(ax, ay, bx, by, z_bot, z_top, color, shade, texture)
+    for i = 0, segments - 1 do
+      local t1 = i / segments
+      local t2 = (i + 1) / segments
+      
+      local px1, py1 = lerp(ax, bx, t1), lerp(ay, by, t1)
+      local px2, py2 = lerp(ax, bx, t2), lerp(ay, by, t2)
+      
+      local u1, u2 = t1, t2
+      
+      -- Inner wall: wind vertices opposite direction
+      local p1 = {view.project(px2, py2, z_bot)}
+      local p2 = {view.project(px1, py1, z_bot)}
+      local p3 = {view.project(px1, py1, z_top)}
+      local p4 = {view.project(px2, py2, z_top)}
+      
+      if texture then
+        draw_textured_quad(p1, p2, p3, p4, color, shade, texture, u2, 1, u1, 0)
+      else
+        draw_quad(p1, p2, p3, p4, color, shade)
+      end
+    end
+  end
+  
+  -- Helper: draw top rim tessellated
+  local function draw_rim_tessellated(ax_in, ay_in, bx_in, by_in, ax_out, ay_out, bx_out, by_out, z, color, shade, texture)
+    for i = 0, segments - 1 do
+      local t1 = i / segments
+      local t2 = (i + 1) / segments
+      
+      local ix1, iy1 = lerp(ax_in, bx_in, t1), lerp(ay_in, by_in, t1)
+      local ix2, iy2 = lerp(ax_in, bx_in, t2), lerp(ay_in, by_in, t2)
+      local ox1_seg, oy1_seg = lerp(ax_out, bx_out, t1), lerp(ay_out, by_out, t1)
+      local ox2_seg, oy2_seg = lerp(ax_out, bx_out, t2), lerp(ay_out, by_out, t2)
+      
+      local p1 = {view.project(ox1_seg, oy1_seg, z)}
+      local p2 = {view.project(ox2_seg, oy2_seg, z)}
+      local p3 = {view.project(ix2, iy2, z)}
+      local p4 = {view.project(ix1, iy1, z)}
+      
+      if texture then
+        draw_textured_quad(p1, p2, p3, p4, color, shade, texture, t1, 0, t2, 1)
+      else
+        draw_quad(p1, p2, p3, p4, color, shade)
+      end
+    end
+  end
+  
+  -- Lazy load texture
   if not tray_wood_texture then
-    local ok, img = pcall(love.graphics.newImage, "resources/wood.png")
+    local ok, img = pcall(love.graphics.newImage, "resources/textures/wood.png")
     if ok then tray_wood_texture = img end
   end
   
-  -- Project all 16 key points (inner/outer at z=0 and z=border_height)
-  local inner_bottom = {
-    {view.project(x1, y1, 0)},
-    {view.project(x2, y1, 0)},
-    {view.project(x2, y2, 0)},
-    {view.project(x1, y2, 0)}
-  }
-  local outer_bottom = {
-    {view.project(ox1, oy1, 0)},
-    {view.project(ox2, oy1, 0)},
-    {view.project(ox2, oy2, 0)},
-    {view.project(ox1, oy2, 0)}
-  }
-  local inner_top = {
-    {view.project(x1, y1, border_height)},
-    {view.project(x2, y1, border_height)},
-    {view.project(x2, y2, border_height)},
-    {view.project(x1, y2, border_height)}
-  }
-  local outer_top = {
-    {view.project(ox1, oy1, border_height)},
-    {view.project(ox2, oy1, border_height)},
-    {view.project(ox2, oy2, border_height)},
-    {view.project(ox1, oy2, border_height)}
-  }
+  local tex = tray_wood_texture
   
-  -- Draw the 4 outer walls (vertical faces on outside) with texture
-  if tray_wood_texture then
-    draw_textured_quad(outer_bottom[1], outer_bottom[2], outer_top[2], outer_top[1], border_color, 180, tray_wood_texture)
-    draw_textured_quad(outer_bottom[2], outer_bottom[3], outer_top[3], outer_top[2], border_color, 220, tray_wood_texture)
-    draw_textured_quad(outer_bottom[3], outer_bottom[4], outer_top[4], outer_top[3], border_color, 255, tray_wood_texture)
-    draw_textured_quad(outer_bottom[4], outer_bottom[1], outer_top[1], outer_top[4], border_color, 190, tray_wood_texture)
-  else
-    draw_quad(outer_bottom[1], outer_bottom[2], outer_top[2], outer_top[1], border_color, 0.7)
-    draw_quad(outer_bottom[2], outer_bottom[3], outer_top[3], outer_top[2], border_color, 0.85)
-    draw_quad(outer_bottom[3], outer_bottom[4], outer_top[4], outer_top[3], border_color, 1.0)
-    draw_quad(outer_bottom[4], outer_bottom[1], outer_top[1], outer_top[4], border_color, 0.75)
-  end
+  -- Draw 4 outer walls (tessellated)
+  -- Wall 1: front (y = y1 side)
+  draw_wall_tessellated(x1, y1, x2, y1, ox1, oy1, ox2, oy1, 0, border_height, border_color, tex and 180 or 0.7, tex)
+  -- Wall 2: right (x = x2 side)
+  draw_wall_tessellated(x2, y1, x2, y2, ox2, oy1, ox2, oy2, 0, border_height, border_color, tex and 220 or 0.85, tex)
+  -- Wall 3: back (y = y2 side)
+  draw_wall_tessellated(x2, y2, x1, y2, ox2, oy2, ox1, oy2, 0, border_height, border_color, tex and 255 or 1.0, tex)
+  -- Wall 4: left (x = x1 side)
+  draw_wall_tessellated(x1, y2, x1, y1, ox1, oy2, ox1, oy1, 0, border_height, border_color, tex and 190 or 0.75, tex)
   
-  -- Draw the 4 inner walls (vertical faces on inside, facing the dice) with texture
-  if tray_wood_texture then
-    draw_textured_quad(inner_bottom[2], inner_bottom[1], inner_top[1], inner_top[2], border_color, 130, tray_wood_texture)
-    draw_textured_quad(inner_bottom[3], inner_bottom[2], inner_top[2], inner_top[3], border_color, 140, tray_wood_texture)
-    draw_textured_quad(inner_bottom[4], inner_bottom[3], inner_top[3], inner_top[4], border_color, 150, tray_wood_texture)
-    draw_textured_quad(inner_bottom[1], inner_bottom[4], inner_top[4], inner_top[1], border_color, 130, tray_wood_texture)
-  else
-    draw_quad(inner_bottom[2], inner_bottom[1], inner_top[1], inner_top[2], border_color, 0.5)
-    draw_quad(inner_bottom[3], inner_bottom[2], inner_top[2], inner_top[3], border_color, 0.55)
-    draw_quad(inner_bottom[4], inner_bottom[3], inner_top[3], inner_top[4], border_color, 0.6)
-    draw_quad(inner_bottom[1], inner_bottom[4], inner_top[4], inner_top[1], border_color, 0.5)
-  end
+  -- Draw 4 inner walls (tessellated, facing the dice)
+  draw_inner_wall_tessellated(x1, y1, x2, y1, 0, border_height, border_color, tex and 130 or 0.5, tex)
+  draw_inner_wall_tessellated(x2, y1, x2, y2, 0, border_height, border_color, tex and 140 or 0.55, tex)
+  draw_inner_wall_tessellated(x2, y2, x1, y2, 0, border_height, border_color, tex and 150 or 0.6, tex)
+  draw_inner_wall_tessellated(x1, y2, x1, y1, 0, border_height, border_color, tex and 130 or 0.5, tex)
   
-  -- Draw the top surface (horizontal rim) with wood texture
-  if tray_wood_texture then
-    draw_textured_quad(outer_top[1], outer_top[2], inner_top[2], inner_top[1], border_color, 230, tray_wood_texture)
-    draw_textured_quad(outer_top[2], outer_top[3], inner_top[3], inner_top[2], border_color, 240, tray_wood_texture)
-    draw_textured_quad(outer_top[3], outer_top[4], inner_top[4], inner_top[3], border_color, 255, tray_wood_texture)
-    draw_textured_quad(outer_top[4], outer_top[1], inner_top[1], inner_top[4], border_color, 225, tray_wood_texture)
-  else
-    draw_quad(outer_top[1], outer_top[2], inner_top[2], inner_top[1], border_color, 0.9)
-    draw_quad(outer_top[2], outer_top[3], inner_top[3], inner_top[2], border_color, 0.95)
-    draw_quad(outer_top[3], outer_top[4], inner_top[4], inner_top[3], border_color, 1.0)
-    draw_quad(outer_top[4], outer_top[1], inner_top[1], inner_top[4], border_color, 0.88)
-  end
+  -- Draw 4 top rim segments (tessellated)
+  draw_rim_tessellated(x1, y1, x2, y1, ox1, oy1, ox2, oy1, border_height, border_color, tex and 230 or 0.9, tex)
+  draw_rim_tessellated(x2, y1, x2, y2, ox2, oy1, ox2, oy2, border_height, border_color, tex and 240 or 0.95, tex)
+  draw_rim_tessellated(x2, y2, x1, y2, ox2, oy2, ox1, oy2, border_height, border_color, tex and 255 or 1.0, tex)
+  draw_rim_tessellated(x1, y2, x1, y1, ox1, oy2, ox1, oy1, border_height, border_color, tex and 225 or 0.88, tex)
 end
 

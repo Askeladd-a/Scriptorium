@@ -7,30 +7,42 @@ require"geometry"
 require"view"
 require"light"
 
-require "resources/config"
+-- Board configuration (consolidated from resources/config.lua)
+config = {
+  boardlight = light.metal
+}
+function config.boardimage(x,y)
+  return "resources/textures/felt.png"
+end
 
 -- Create four D6 dice by default for playtesting
 dice = {}
+local dice_size = 0.7
 for i = 1, 4 do
-  local sx = (i - 2.5) * 0.8
+  local sx = (i - 2.5) * 0.6
   dice[i] = {
-    star = newD6star():set({sx, 0, 10}, { (i%2==0) and 4 or -4, (i%2==0) and -2 or 2, 0 }, {1,1,2}),
+    star = newD6star(dice_size):set({sx, 0, 10}, { (i%2==0) and 4 or -4, (i%2==0) and -2 or 2, 0 }, {1,1,2}),
     die = clone(d6, { material = light.plastic, color = {200, 0, 20, 150}, text = {255,255,255}, shadow = {20,0,0,150} })
   }
 
-  -- Apply a wood-like physics preset to the star (visual clone stays unchanged)
-  -- Tweak these numbers later to taste; this does not modify the `die = clone(...)` line
-  dice[i].star.mass = 1.2
-  dice[i].star.invMass = 1 / 1.2
-  -- per-die tuning to match wood-like behaviour
+  -- Physics tuning: don't override mass (let newD6star calculate it based on size)
+  -- Only override per-die behavior parameters
   dice[i].star.restitution = 0.25
   dice[i].star.friction = 0.75
-  dice[i].star.linear_damping = 0.15  -- increased: dice stop faster
-  dice[i].star.angular_damping = 0.20 -- increased: dice stop spinning sooner
+  dice[i].star.linear_damping = 0.18  -- higher damping for smaller dice
+  dice[i].star.angular_damping = 0.22 -- higher damping for smaller dice
   -- apply a default material preset to the star for convenience (now rubber)
   if materials and materials.get then
     local mat = materials.get("rubber")
-    if mat then materials.apply(dice[i].star, mat) end
+    if mat then 
+      -- Apply material but scale mass to dice size
+      local size_factor = dice_size * dice_size * dice_size  -- volume scales with size^3
+      dice[i].star.restitution = mat.restitution or 0.15
+      dice[i].star.friction = mat.friction or 1.0
+      dice[i].star.linear_damping = mat.linear_damping or 0.12
+      dice[i].star.angular_damping = mat.angular_damping or 0.12
+      -- Keep mass calculated by newD6star (proportional to size)
+    end
   end
 end
 
@@ -62,11 +74,13 @@ end
 
 function love.load()
   -- box: x,y,z, gravity, bounce(restitution), friction, dt
-  -- wood-like physical parameters
-  box:set(10,10,10,25,0.25,0.75,0.01)
+  -- wood-like physical parameters (rectangular tray: smaller)
+  box:set(8,5,10,25,0.25,0.75,0.01)
   -- slightly stronger global damping to dissipate energy and avoid ball-like rebounds
   box.linear_damping = 0.12
   box.angular_damping = 0.12
+  -- border height for rim rejection physics (must match render.tray_border height)
+  box.border_height = 1.5
 
   for i=1,#dice do box[i]=dice[i].star end
   -- seed randomness and perform an initial programmatic roll
@@ -222,43 +236,41 @@ function rollAllDice()
   end
 end
 
-
 function love.draw()
   --use a coordinate system with 0,0 at the center
   --and an approximate width and height of 10
   local cx,cy=love.graphics.getWidth()/2,love.graphics.getHeight()/2
   local scale=cx/4
   
+  -- Offset to position tray lower on screen (where the yellow X was)
+  local tray_offset_y = love.graphics.getHeight() * 0.22
+  
   love.graphics.push()
-  love.graphics.translate(cx,cy)
+  love.graphics.translate(cx, cy + tray_offset_y)
   love.graphics.scale(scale)
   -- convert already defined globally; reuse it here
   
-  --board: make it square using box.x as half-extent
-  local b = math.max(0.001, box.x)
-  render.board(config.boardimage, config.boardlight, -b, b, -b, b)
+  --board: rectangular using box.x (width) and box.y (depth)
+  local bx = math.max(0.001, box.x)
+  local by = math.max(0.001, box.y)
+  render.board(config.boardimage, config.boardlight, -bx, bx, -by, by)
   
   --shadows
   for i=1,#dice do render.shadow(function(z,f) f() end, dice[i].die, dice[i].star) end
-  render.edgeboard()
+  render.edgeboard()  -- covers area outside tray with black
   
-  -- Draw tray border FIRST (no stencil, always visible)
+  -- Draw everything in a SINGLE z-buffer pass for correct depth sorting
   render.clear()
+  
+  -- Add tray border to z-buffer
   render.tray_border(render.zbuffer, 0.8, 1.5)  -- border_width=0.8, border_height=1.5
-  render.paint()
   
-  -- Set up stencil: mark the tray interior (floor + inner walls) where dice can be drawn
-  love.graphics.stencil(function()
-    render.stencil_board_area(1.5)  -- same border_height as tray_border
-  end, "replace", 1)
-  
-  -- Draw dice ONLY inside the stencil (inside the tray)
-  love.graphics.setStencilTest("greater", 0)
-  render.clear()
-  render.bulb(render.zbuffer) --light source
+  -- Add light bulb and dice to SAME z-buffer
+  render.bulb(render.zbuffer)
   for i=1,#dice do render.die(render.zbuffer, dice[i].die, dice[i].star) end
+  
+  -- Paint everything together - z-buffer handles occlusion
   render.paint()
-  love.graphics.setStencilTest()  -- disable stencil
 
   -- (debug overlay removed)
 

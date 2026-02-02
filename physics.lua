@@ -14,34 +14,42 @@ materials.presets = {
     mass = 1.2,
     restitution = 0.25,
     friction = 0.75,
-    linear_damping = 0.06,
-    angular_damping = 0.08,
+    linear_damping = 0.15,
+    angular_damping = 0.20,
     color = {0.55, 0.35, 0.18}, -- darker brown
   },
-  metal = {
-    mass = 1.5,
-    restitution = 0.12,
-    friction = 0.35,
-    linear_damping = 0.02,
-    angular_damping = 0.03,
-    color = {0.66, 0.68, 0.70}, -- cool metal gray
-  },
   rubber = {
-    mass = 1.5,
-    restitution = 0.15,
-    friction = 1.0,
-    linear_damping = 0.12,
-    angular_damping = 0.12,
+    mass = 1.0,
+    restitution = 0.35,
+    friction = 0.85,
+    linear_damping = 0.10,
+    angular_damping = 0.15,
     color = {0.08, 0.08, 0.10}, -- near-black (rubber)
   },
+  plastic = {
+    mass = 0.8,
+    restitution = 0.30,
+    friction = 0.70,
+    linear_damping = 0.12,
+    angular_damping = 0.18,
+    color = {0.9, 0.2, 0.2}, -- red plastic
+  },
+  metal = {
+    mass = 2.0,
+    restitution = 0.45,
+    friction = 0.60,
+    linear_damping = 0.08,
+    angular_damping = 0.12,
+    color = {0.66, 0.68, 0.70}, -- cool metal gray
+  },
   bone = {
-    mass = 1.3,
-    restitution = 0.22,
-    friction = 0.72,
-    linear_damping = 0.05,
-    angular_damping = 0.06,
-    color = {0.97, 0.94, 0.86}, -- warm bone
-  }
+    mass = 1.8,
+    restitution = 0.30,
+    friction = 0.80,
+    linear_damping = 0.12,
+    angular_damping = 0.18,
+    color = {0.97, 0.94, 0.86}, -- warm ivory
+  },
 }
 
 -- Apply preset properties to a star-like object (mutates star)
@@ -79,9 +87,9 @@ box.pos_percent = 0.08  -- REDUCED: correction strength (0-1, lower = less aggre
 box.max_steps = 5       -- max physics sub-steps per frame (spiral-of-death clamp)
 box.dv_max = 50         -- clamp for delta-velocity applied by impulses
 -- sleep detection (from manual: prevents jitter)
-box.sleep_linear = 0.08   -- velocity threshold for sleeping (REDUCED: very permissive, sleeps easily)
-box.sleep_angular = 0.12  -- angular velocity threshold (REDUCED: almost any rotation can sleep)
-box.sleep_time = 0.2      -- time below threshold before sleeping (REDUCED: sleeps very quickly)
+box.sleep_linear = 0.15   -- velocity threshold for sleeping (higher = sleeps sooner)
+box.sleep_angular = 0.20  -- angular velocity threshold (higher = sleeps sooner)
+box.sleep_time = 0.08     -- time below threshold before sleeping (very fast)
 -- buffered logging to reduce I/O churn; lines are flushed once per update
 box.log_buffer = {}
 function box:set(x,y,z,gravity,bounce,friction,dt) 
@@ -119,7 +127,7 @@ function box:update(dt)
         -- Lock only if 4+ vertices touch ground (stable face resting) AND almost no movement
         local v_mag = s.velocity:abs()
         local w_mag = s.angular:abs()
-        if vertices_on_ground >= 4 and v_mag < 0.2 and w_mag < 0.15 then
+        if vertices_on_ground >= 4 and v_mag < 0.35 and w_mag < 0.30 then
           -- Dice is stable and resting: LOCK completely
           s.velocity = vector{0,0,0}
           s.angular = vector{0,0,0}
@@ -132,6 +140,37 @@ function box:update(dt)
           s:update(self.dt)
           -- pass global bounce/friction but allow per-star override inside star:wall
           s:box(-self.x,-self.y,0,self.x,self.y,self.z,self.bounce,self.friction)
+          
+          -- RIM REJECTION: prevent dice from resting on tray border rim
+          -- The rim is at z = border_height (default 1.5) around the inner edge
+          local border_height = self.border_height or 1.5
+          local rim_margin = 0.3  -- how close to edge triggers rim rejection
+          local rim_z_min = border_height * 0.3  -- start pushing when z > this
+          local rim_z_max = border_height + 0.5  -- stop caring above this
+          
+          local pos = s.position
+          local near_x_edge = math.abs(pos[1]) > (self.x - rim_margin)
+          local near_y_edge = math.abs(pos[2]) > (self.y - rim_margin)
+          local in_rim_zone = pos[3] > rim_z_min and pos[3] < rim_z_max
+          
+          if in_rim_zone and (near_x_edge or near_y_edge) then
+            -- Apply inward push force to knock dice off the rim
+            local push_strength = 2.0 * self.dt
+            if near_x_edge then
+              local dir = pos[1] > 0 and -1 or 1
+              s.velocity[1] = s.velocity[1] + dir * push_strength
+            end
+            if near_y_edge then
+              local dir = pos[2] > 0 and -1 or 1
+              s.velocity[2] = s.velocity[2] + dir * push_strength
+            end
+            -- Also add slight downward push
+            s.velocity[3] = s.velocity[3] - push_strength * 0.5
+            -- Wake up if sleeping
+            s.asleep = false
+            s.sleep_timer = 0
+          end
+          
           -- apply damping: prefer per-star damping if present, else fall back to global
           local ld = (s.linear_damping ~= nil) and s.linear_damping or self.linear_damping or 0
           local ad = (s.angular_damping ~= nil) and s.angular_damping or self.angular_damping or 0
