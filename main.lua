@@ -16,6 +16,11 @@ local Scriptorium = require("src.game.scriptorium")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
 
+-- Scene references (popolate in love.load)
+local splash_scene = nil
+local main_menu_scene = nil
+local run_scene = nil
+
 -- Configurazione board (dal main.lua originale)
 config = {
     boardlight = light.metal
@@ -67,7 +72,7 @@ function love.load()
     box:set(5.5, 3.5, 10, 25, 0.25, 0.75, 0.01)
     box.linear_damping = 0.12
     box.angular_damping = 0.12
-    box.border_height = 1.2
+    box.border_height = 0.9
     
     -- Crea 4 dadi D6
     for i = 1, 4 do
@@ -114,17 +119,28 @@ function love.load()
     
     -- Registra scene
     SceneManager.register("scriptorium", Scriptorium)
+    -- Register UI scenes after LÖVE subsystems ready (safe)
+    splash_scene = require("src.scenes.splash")
+    SceneManager.register("Splash", splash_scene)
+    main_menu_scene = require("src.scenes.main_menu")
+    SceneManager.register("MainMenu", main_menu_scene)
+    local run_mod = require("src.game.run")
+    local Run = run_mod.Run
+    run_scene = run_mod.scene
+    run_scene.onExit = function()
+        SceneManager.switch("MainMenu")
+    end
+    SceneManager.register("run", run_scene)
     
     -- Setup callback roll
     Scriptorium.onRollRequest = function()
         rollAllDice()
     end
     
-    -- Avvia scena
-    SceneManager.switch("scriptorium", "BIFOLIO", seed)
-    
-    -- Roll iniziale
-    rollAllDice()
+    -- Avvio scena: mostra prima la splash e poi il menu
+    print("[love.load] switching to Splash")
+    -- Avvio dalla splash
+    SceneManager.switch("Splash")
 end
 
 function love.update(dt)
@@ -157,6 +173,12 @@ end
 function love.draw()
     local w = love.graphics.getWidth()
     local h = love.graphics.getHeight()
+
+    -- If we're showing Splash or MainMenu, let SceneManager draw and skip the game draw
+    if SceneManager.current and (SceneManager.current == splash_scene or SceneManager.current == main_menu_scene) then
+        SceneManager.draw()
+        return
+    end
     
     -- ========================
     -- LAYOUT: 3/4 pergamena, 1/4 tray + bottoni
@@ -206,11 +228,11 @@ function love.draw()
     for i = 1, #dice do
         render.shadow(function(z, f) f() end, dice[i].die, dice[i].star)
     end
-    render.edgeboard()
+    -- render.edgeboard() -- removed: covers outside tray with black (caused unwanted black background)
 
     -- Z-buffer pass
     render.clear()
-    render.tray_border(render.zbuffer, 0.8, 1.5)
+    render.tray_border(render.zbuffer, 0.8, 0.9)
     render.bulb(render.zbuffer)
     for i = 1, #dice do
         render.die(render.zbuffer, dice[i].die, dice[i].star)

@@ -135,4 +135,55 @@ function Run:getStatus()
     }
 end
 
-return Run
+-- Wrapper scena per SceneManager
+local run_scene = {}
+local Run = Run
+local current_run = nil
+
+function run_scene.enter()
+    -- Crea nuova run (placeholder: fascicolo BIFOLIO, seed random)
+    current_run = Run.new("BIFOLIO", os.time())
+end
+
+function run_scene.exit()
+    current_run = nil
+end
+
+function run_scene.update(dt)
+    -- Placeholder: nessuna logica temporale
+end
+
+function run_scene.draw()
+    love.graphics.setBackgroundColor(0.15, 0.12, 0.18)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(love.graphics.newFont(24))
+    love.graphics.print("GAME RUN - Placeholder", 60, 100)
+    if current_run then
+        local status = current_run:getStatus()
+        love.graphics.setFont(love.graphics.newFont(16))
+        love.graphics.print("Fascicolo: " .. status.fascicolo, 60, 140)
+        love.graphics.print("Folio: " .. status.folio, 60, 160)
+        love.graphics.print("Reputation: " .. status.reputation, 60, 180)
+        love.graphics.print("Coins: " .. status.coins, 60, 200)
+        love.graphics.print("Seed: " .. status.seed, 60, 220)
+        if status.game_over then
+            love.graphics.print("GAME OVER!", 60, 260)
+        elseif status.victory then
+            love.graphics.print("VITTORIA!", 60, 260)
+        end
+    end
+    love.graphics.print("Premi ESC per tornare al menu", 60, 300)
+    love.graphics.setColor(1, 1, 1)
+end
+
+function run_scene.keypressed(key, scancode, isrepeat)
+    if key == "escape" then
+        -- Torna al menu
+        if run_scene.onExit then run_scene.onExit() end
+    end
+end
+
+        return {
+            Run = Run,
+            scene = run_scene
+        }

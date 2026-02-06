@@ -80,7 +80,7 @@ function love.load()
   box.linear_damping = 0.12
   box.angular_damping = 0.12
   -- border height for rim rejection physics (must match render.tray_border height)
-  box.border_height = 1.5
+  box.border_height = 0.9
 
   for i=1,#dice do box[i]=dice[i].star end
   -- seed randomness and perform an initial programmatic roll
@@ -128,9 +128,7 @@ end
 function love.mousemoved(x,y,dx,dy,istouch)
   -- no-op: grab removed
 end
-function love.mousereleased(x,y,b)
-  -- no-op: grab removed
-end
+  
 
 -- Mouse wheel scroll (LÖVE 0.9+)
 function love.wheelmoved(dx,dy)
@@ -263,7 +261,7 @@ function love.draw()
   render.clear()
   
   -- Add tray border to z-buffer
-  render.tray_border(render.zbuffer, 0.8, 1.5)  -- border_width=0.8, border_height=1.5
+  render.tray_border(render.zbuffer, 0.8, 0.9)  -- border_width=0.8, border_height=0.9
   
   -- Add light bulb and dice to SAME z-buffer
   render.bulb(render.zbuffer)

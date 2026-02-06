@@ -46,7 +46,7 @@ function love.load()
     box:set(5.5, 3.5, 10, 25, 0.25, 0.75, 0.01)
     box.linear_damping = 0.12
     box.angular_damping = 0.12
-    box.border_height = 1.2
+    box.border_height = 0.9
     
     -- Crea 4 dadi D6
     for i = 1, 4 do
@@ -141,11 +141,11 @@ function love.draw()
     for i = 1, #dice do
         render.shadow(function(z, f) f() end, dice[i].die, dice[i].star)
     end
-    render.edgeboard()
+    -- render.edgeboard() -- removed: covers outside tray with black (caused unwanted black background)
     
     -- Z-buffer pass
     render.clear()
-    render.tray_border(render.zbuffer, 0.8, 1.5)
+    render.tray_border(render.zbuffer, 0.8, 0.9)
     render.bulb(render.zbuffer)
     for i = 1, #dice do
         render.die(render.zbuffer, dice[i].die, dice[i].star)
