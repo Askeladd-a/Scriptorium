@@ -11,7 +11,6 @@ require("view")
 require("light")
 
 -- Carica moduli gioco (consolidati)
-local SceneManager = require("src.core.scene_manager")
 local Scriptorium = require("src.game.scriptorium")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
@@ -116,51 +115,45 @@ function love.load()
         love.math.setRandomSeed(seed)
     end
     
-    -- Registra scene
-    SceneManager.register("scriptorium", Scriptorium)
-    -- Register UI scenes after LÖVE subsystems ready (safe)
+    -- ...existing code...
+    -- Carica le scene
     main_menu_scene = require("src.scenes.main_menu")
-    SceneManager.register("MainMenu", main_menu_scene)
-    local run_mod = require("src.game.run")
-    local Run = run_mod.Run
-    run_scene = run_mod.scene
-    run_scene.onExit = function()
-        SceneManager.switch("MainMenu")
+    run_scene = require("src.game.run").scene
+    desk_prototype = require("src.scenes.desk_prototype")
+    settings_scene = require("src.scenes.settings")
+    startup_splash_scene = require("src.scenes.startup_splash")
+    -- Rendi globali per accesso dalle scene
+    _G.main_menu_scene = main_menu_scene
+    _G.switch_scene = switch_scene
+    -- Imposta la scena iniziale
+    current_scene = startup_splash_scene
+
+    -- Funzione per cambiare scena
+    function switch_scene(scene)
+        if scene and scene.enter then scene:enter() end
+        current_scene = scene
     end
-    SceneManager.register("run", run_scene)
-    -- Registra scena reward
-    require("src.core.register_reward_scene")
-    -- Registra scena prototipo desk
-    local desk_prototype = require("src.scenes.desk_prototype")
-    SceneManager.register("desk_prototype", desk_prototype)
-    
     -- Setup callback roll
     Scriptorium.onRollRequest = function()
         rollAllDice()
     end
-    
-    -- Avvio scena: direttamente al menu principale (splash rimosso)
-    log("[love.load] switching to desk_prototype")
-    SceneManager.switch("desk_prototype")
 end
 
 function love.update(dt)
     -- Update physics
     box:update(dt)
-    
     -- Check se i dadi si sono fermati
     checkDiceSettled(dt)
-    
-    -- Update scena
-    SceneManager.update(dt)
-    
+    -- Update scena attiva
+    if current_scene and current_scene.update then
+        current_scene:update(dt)
+    end
     -- Camera/view (dal main.lua originale)
     local dx, dy = love.mouse.delta()
     if love.mouse.isDown(2) then
         view.raise(dy / 100)
         view.turn(dx / 100)
     end
-    
     -- Stato overlay feedback
     if overlayTimer and overlayTimer > 0 then
         overlayTimer = overlayTimer - dt
@@ -351,147 +344,6 @@ function drawKeptDiceIndicator(screen_w, tray_y)
     end
 end
 
--- Minimal love.draw: clears the framebuffer and delegates to the SceneManager.
-function love.draw()
-    local w = love.graphics.getWidth()
-    local h = love.graphics.getHeight()
-
-    -- Ensure no scissor/canvas is active and clear the framebuffer to solid black
-    if love.graphics.setScissor then love.graphics.setScissor() end
-    if love.graphics.clear then
-        love.graphics.clear(0, 0, 0, 1)
-    else
-        love.graphics.setColor(0, 0, 0, 1)
-        love.graphics.rectangle("fill", 0, 0, w, h)
-    end
-    love.graphics.setColor(1, 1, 1, 1)
-
-    -- Delegate rendering to the active scene (scenes handle their own drawing)
-    if SceneManager and SceneManager.draw then
-        SceneManager.draw()
-    end
-end
-
-function love.keypressed(key, scancode, isrepeat)
-    -- Disabilitato: gameplay solo via UI/click
-    -- if key == 'space' then
-    --     rollAllDice()
-    -- elseif key == 'r' then
-    --     releaseAllDice()
-    --     rollAllDice()
-    -- end
-    SceneManager.keypressed(key, scancode, isrepeat)
-end
-
-function love.mousepressed(x, y, button)
-    if button == 1 then
-        -- BOTTONI PUSH/STOP
-        local w = love.graphics.getWidth()
-        local h = love.graphics.getHeight()
-        local btn_area_h = 50
-        local btn_y = h - btn_area_h
-        local btn_cx = w / 2
-        local btn_spacing = 24
-        local UI = require("src.ui")
-        local folio = Scriptorium.run and Scriptorium.run.current_folio or nil
-        -- Push
-        local push_btn = UI.PUSHSTOP_BUTTONS.push
-        if x >= push_btn.x and x <= push_btn.x + push_btn.w and y >= push_btn.y and y <= push_btn.y + push_btn.h then
-            -- Azione PUSH: committa Wet Buffer
-            if #WetBuffer > 0 then
-                commitWetBuffer(folio)
-            end
-            return
-        end
-        -- Stop
-        local stop_btn = UI.PUSHSTOP_BUTTONS.stop
-        if x >= stop_btn.x and x <= stop_btn.x + stop_btn.w and y >= stop_btn.y and y <= stop_btn.y + stop_btn.h then
-            -- Azione STOP: termina turno, committa Wet Buffer e passa
-            if #WetBuffer > 0 then
-                commitWetBuffer(folio)
-            end
-            -- TODO: transizione stato/fine turno
-            return
-        end
-        -- CLICK SU CELLA PATTERN (pergamena)
-        if folio then
-            -- Calcola layout pergamena
-            local parch_margin = 20
-            local parch_w = math.min(400, w - parch_margin * 2)
-            local parch_x = w / 2 - parch_w / 2
-            local parch_y_pos = parch_margin / 2
-            local parch_inner_h = (h - btn_area_h) * 0.75 - parch_margin
-            -- Cerca cella cliccata
-            local cell_size = 26
-            local spacing = 3
-            local curr_y = parch_y_pos + 32
-            for _, elem_name in ipairs(folio.ELEMENTS) do
-                local elem = folio.elements[elem_name]
-                local pattern = elem.pattern
-                local grid_w = pattern.cols * (cell_size + spacing) - spacing
-                local grid_x = parch_x + (parch_w - grid_w) / 2
-                local grid_y = curr_y + 6
-                for row = 1, pattern.rows do
-                    for col = 1, pattern.cols do
-                        local cx = grid_x + (col - 1) * (cell_size + spacing)
-                        local cy = grid_y + (row - 1) * (cell_size + spacing)
-                        if x >= cx and x <= cx + cell_size and y >= cy and y <= cy + cell_size then
-                            -- Prova a piazzare il dado attivo (TODO: selezione dado attivo)
-                            -- Esempio: prendi primo dado non kept
-                            local die = nil
-                            for i = 1, #dice do
-                                if not dice[i].kept then die = dice[i] break end
-                            end
-                            if die then
-                                -- Scegli pigmento (MVP: primo pigmento valido)
-                                local pigment = die.color
-                                -- Verifica se la cella è valida
-                                local valid = folio:getValidPlacements(elem_name, die.value, pigment)
-                                local is_valid = false
-                                for _, v in ipairs(valid) do
-                                    if v.row == row and v.col == col then is_valid = true break end
-                                end
-                                if is_valid then
-                                    addToWetBuffer(elem_name, row, col, die, pigment)
-                                    die.kept = true -- blocca il dado
-                                end
-                            end
-                            return
-                        end
-                    end
-                end
-                local grid_h = pattern.rows * (cell_size + spacing) - spacing
-                curr_y = curr_y + grid_h + 28
-            end
-        end
-        -- Check roll button
-        if x >= roll_button.x and x <= roll_button.x + roll_button.w and
-           y >= roll_button.y and y <= roll_button.y + roll_button.h then
-            rollAllDice()
-            return
-        end
-        
-        -- Check click su dado nel tray (solo quando dadi fermi)
-        if diceSettled then
-            local die_idx = findDieAtPosition(x, y)
-            if die_idx then
-                toggleDieKept(die_idx)
-                return
-            end
-        end
-    end
-    SceneManager.mousepressed(x, y, button)
-end
-
-function love.mousereleased(x, y, button)
-    SceneManager.mousereleased(x, y, button)
-end
-
-function love.wheelmoved(dx, dy)
-    if dy > 0 then view.move(1.1) end
-    if dy < 0 then view.move(0.91) end
-    SceneManager.wheelmoved(dx, dy)
-end
 
 -- ============================================================================
 -- DICE FUNCTIONS

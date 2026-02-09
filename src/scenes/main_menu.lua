@@ -9,11 +9,31 @@ local menu_bg = nil
 
 local menu_items = {
     {label = "Continue", enabled = false},
-    {label = "Start Game", enabled = true},
+    {label = "New Game", enabled = true},
     {label = "Settings", enabled = true},
     {label = "Wishlist Now!", enabled = true},
     {label = "Quit", enabled = true},
 }
+
+-- Absolute positions for menu items (from design). Each entry: x,y,w,h
+-- Coordinate precise per centrare ogni pulsante sulla costina corrispondente (tarate su screenshot)
+local menu_positions = {
+    {x=260, y=110, w=210, h=70, angle=-0.06},   -- Continue: primo libro in alto
+    {x=260, y=185, w=210, h=70, angle=-0.06},   -- New Game: secondo libro
+    {x=260, y=265, w=210, h=70, angle=-0.06},   -- Settings: terzo libro
+    {x=260, y=345, w=210, h=70, angle=-0.06},   -- Wishlist: quarto libro
+    {x=320, y=440, w=210, h=70, angle=-0.06},   -- Quit: rotolo in basso
+}
+
+
+
+-- Save detection and wishlist URL
+local save_file_candidate = nil
+local WISHLIST_URL = "https://store.steampowered.com/"
+
+-- Simple in-menu modal for stubs (settings, messages)
+local modal_message = nil
+local modal_timer = 0
 
 local selected = 2 -- Default: Start Game
 local hovered = nil -- Indice del pulsante sotto il mouse
@@ -32,17 +52,27 @@ function MainMenu:enter()
 
     -- Load menu font once (safe)
     if not menu_font then
-        if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo("resources/font/EagleLake-Regular.ttf") then
-            local ok, f = pcall(function()
-                return love.graphics.newFont("resources/font/EagleLake-Regular.ttf", 32)
-            end)
-            if ok and f then
-                menu_font = f
-                log("[MainMenu] menu font loaded")
-            else
-                menu_font = nil
-                log("[MainMenu] failed to load menu font, will fallback")
+        local candidates = {
+            "resources/font/Manuskript Gothisch UNZ1A.ttf",
+            "resources/font/Manuskript.ttf",
+            "resources/font/UnifrakturMaguntia.ttf",
+            "resources/font/EagleLake-Regular.ttf",
+        }
+        for _, fname in ipairs(candidates) do
+            if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(fname) then
+                local ok, f = pcall(function() return love.graphics.newFont(fname, 28) end)
+                if ok and f then
+                    menu_font = f
+                    log("[MainMenu] menu font loaded: " .. fname)
+                    break
+                end
             end
+        end
+        if not menu_font then
+            -- fallback to system font
+            local ok, f = pcall(function() return love.graphics.newFont(28) end)
+            menu_font = (ok and f) or love.graphics.getFont()
+            log("[MainMenu] menu font fallback in use")
         end
     end
 
@@ -107,6 +137,32 @@ function MainMenu:enter()
     else
         -- music not available (silent)
     end
+
+    -- Detect save file presence (enable Continue if found)
+    local save_candidates = {
+        "scriptorium_save.dat",
+        "scriptorium_save.lua",
+        "save.dat",
+        "save.lua",
+        "scriptorium_save.bin",
+    }
+    save_file_candidate = nil
+    if love.filesystem and love.filesystem.getInfo then
+        for _, fname in ipairs(save_candidates) do
+            local info = pcall(function() return love.filesystem.getInfo(fname) end)
+            if info then
+                -- prefer the first existing file
+                save_file_candidate = fname
+                break
+            end
+        end
+    end
+    if save_file_candidate then
+        menu_items[1].enabled = true
+        log(string.format("[MainMenu] save file detected: %s -> Continue enabled", tostring(save_file_candidate)))
+    else
+        menu_items[1].enabled = false
+    end
 end
 
 function MainMenu:exit()
@@ -121,6 +177,12 @@ function MainMenu:update(dt)
     if music and not music:isPlaying() and not music_play_attempted then
         music_play_attempted = true
         pcall(function() music:play() end)
+    end
+
+    -- Modal timer
+    if modal_timer and modal_timer > 0 then
+        modal_timer = modal_timer - dt
+        if modal_timer <= 0 then modal_message = nil; modal_timer = 0 end
     end
 end
 
@@ -148,54 +210,92 @@ function MainMenu:draw()
     -- Tavolo (base) removed for full-black background in menu
     -- (was: love.graphics.setColor(0.25,0.18,0.10) + rectangle at bottom)
 
-    -- Pulsanti semplici (sinistra) — UI ridisegnata
-    local btn_w, btn_h = 340, 60
-    local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
-    local spacing = 12
+    -- Text-only menu items: place at absolute positions (static menu_positions)
+    local font = menu_font or love.graphics.getFont()
+    love.graphics.setFont(font)
     for i, item in ipairs(menu_items) do
-        local y = stack_y + (i-1) * (btn_h + spacing)
-        -- Ombra
-        love.graphics.setColor(0, 0, 0, 0.6)
-        love.graphics.rectangle("fill", left_x + 6, y + 6, btn_w, btn_h, 12, 12)
-
-        -- Colore di sfondo del pulsante (stato normale/hover/selected)
-        if i == selected then
-            love.graphics.setColor(0.93, 0.8, 0.28, 1)
-        elseif i == hovered then
-            love.graphics.setColor(0.95, 0.85, 0.45, 1)
-        else
-            love.graphics.setColor(0.33, 0.24, 0.12, 1)
-        end
-        love.graphics.rectangle("fill", left_x, y, btn_w, btn_h, 12, 12)
-
-        -- Bordo: dorato per Settings, sottile altrimenti
-        if item.label == "Settings" then
-            love.graphics.setColor(0.9, 0.75, 0.3, 1)
-            love.graphics.setLineWidth(3)
-            love.graphics.rectangle("line", left_x + 3, y + 3, btn_w - 6, btn_h - 6, 10, 10)
-        else
-            love.graphics.setColor(0.6, 0.5, 0.35, 1)
-            love.graphics.setLineWidth(2)
-            love.graphics.rectangle("line", left_x + 3, y + 3, btn_w - 6, btn_h - 6, 10, 10)
-        end
-        love.graphics.setLineWidth(1)
-
-        -- Testo orizzontale, allineato a sinistra con padding
-        love.graphics.setColor((i == selected or i == hovered) and {0.1, 0.06, 0.03, 1} or {0.95, 0.90, 0.80, 1})
-        local font = menu_font or love.graphics.getFont()
-        love.graphics.setFont(font)
         local text = item.label or ""
-        local padding = 18
-        love.graphics.printf(text, left_x + padding, y + (btn_h - font:getHeight()) / 2, btn_w - padding * 2, "left")
+        local pos = menu_positions[i]
+        if pos then
+            local tx = pos.x
+            local ty = pos.y
+            local tw = pos.w
+            local th = pos.h
+            local isHovered = (i == hovered)
 
-        -- Overlay disabilitato
-        if not item.enabled then
-            love.graphics.setColor(0, 0, 0, 0.45)
-            love.graphics.rectangle("fill", left_x, y, btn_w, btn_h, 12, 12)
+            -- Glow behind text when hovered (use rect from design)
+            if isHovered then
+                love.graphics.push()
+                love.graphics.setBlendMode("add")
+                local glowPad = 14
+                love.graphics.setColor(0.98, 0.86, 0.34, 0.14)
+                love.graphics.rectangle("fill", tx - glowPad/2, ty - glowPad/2, tw + glowPad, th + glowPad, 12, 12)
+                love.graphics.setBlendMode("alpha")
+                love.graphics.pop()
+            end
+
+            -- Shadow for legibility (offset)
+            love.graphics.setColor(0,0,0,0.6)
+            -- center text inside the provided box
+            local tfont = font
+            local twidth = tfont:getWidth(text)
+            local theight = tfont:getHeight()
+            local text_x = tx + (tw - twidth) / 2
+            local text_y = ty + (th - theight) / 2
+            love.graphics.print(text, text_x + 2, text_y + 2)
+
+            -- Main text color
+            if not item.enabled then
+                love.graphics.setColor(0.5,0.45,0.4,0.85)
+            elseif i == selected then
+                love.graphics.setColor(0.98,0.86,0.34,1)
+            elseif isHovered then
+                love.graphics.setColor(0.97,0.88,0.6,1)
+            else
+                love.graphics.setColor(0.95,0.90,0.80,1)
+            end
+            love.graphics.print(text, text_x, text_y)
+        else
+            -- Fallback to stacked text if positions missing
+            local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
+            local spacing = 18
+            local tw = font:getWidth(text)
+            local th = font:getHeight()
+            local y = stack_y + (i-1) * (th + spacing)
+            local isHovered = (i == hovered)
+            if isHovered then
+                love.graphics.push(); love.graphics.setBlendMode("add")
+                love.graphics.setColor(0.98, 0.86, 0.34, 0.14)
+                love.graphics.rectangle("fill", left_x - 12/2, y - 12/2, tw + 12, th + 12, 8, 8)
+                love.graphics.setBlendMode("alpha"); love.graphics.pop()
+            end
+            love.graphics.setColor(0,0,0,0.6); love.graphics.print(text, left_x + 2, y + 2)
+            if not item.enabled then
+                love.graphics.setColor(0.5,0.45,0.4,0.85)
+            elseif i == selected then
+                love.graphics.setColor(0.98,0.86,0.34,1)
+            elseif isHovered then
+                love.graphics.setColor(0.97,0.88,0.6,1)
+            else
+                love.graphics.setColor(0.95,0.90,0.80,1)
+            end
+            love.graphics.print(text, left_x, y)
         end
     end
 
     -- Decorative overlay removed (cards/coins/dice) per UI cleanup
+
+    -- Draw modal if present
+    if modal_message then
+        local font = menu_font or love.graphics.getFont()
+        love.graphics.setFont(font)
+        local bw, bh = 520, 140
+        local mx, my = (w - bw) / 2, (h - bh) / 2
+        love.graphics.setColor(0,0,0,0.7)
+        love.graphics.rectangle("fill", mx, my, bw, bh, 8, 8)
+        love.graphics.setColor(0.95,0.9,0.8,1)
+        love.graphics.printf(modal_message, mx + 16, my + 18, bw - 32, "center")
+    end
 end
 
 function MainMenu:keypressed(key)
@@ -211,58 +311,116 @@ function MainMenu:keypressed(key)
         until menu_items[selected].enabled
     elseif key == "return" or key == "space" then
         local item = menu_items[selected]
-        if item.label == "Start Game" then
-            require("src.core.scene_manager").switch("Scriptorium")
+        if item.label == "New Game" or item.label == "Start Game" then
+            -- Start a fresh run with a new seed
+            local seed = os.time()
+            pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
+            require("src.core.scene_manager").switch("Scriptorium", nil, seed)
         elseif item.label == "Quit" then
             love.event.quit()
+        elseif item.label == "Settings" then
+            require("src.core.scene_manager").switch("Settings")
         else
-            log("[MainMenu] Selected: " .. item.label)
+            -- Delegate to activate for other items (Continue/Wishlist)
+            MainMenu:activate(selected)
         end
     end
 end
 
 function MainMenu:mousepressed(x, y, button)
     if button ~= 1 then return end
-    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    local btn_w, btn_h = 340, 60
-    local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
-    local spacing = 12
+    -- Usa solo menu_positions statico
     for i, item in ipairs(menu_items) do
-        local yb = stack_y + (i-1) * (btn_h + spacing)
-        if x >= left_x and x <= left_x + btn_w and y >= yb and y <= yb + btn_h then
-            if item.enabled then
-                selected = i
-                hovered = i
-                MainMenu:activate(i)
+        local pos = menu_positions[i]
+        if pos then
+            if x >= pos.x and x <= pos.x + pos.w and y >= pos.y and y <= pos.y + pos.h then
+                if item.enabled then selected = i; hovered = i; MainMenu:activate(i) end
+                return
             end
-            return
+        else
+            -- Fallback to text bounding box
+            local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+            local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
+            local font = menu_font or love.graphics.getFont()
+            local spacing = 18
+            local text = item.label or ""
+            local tw = font:getWidth(text)
+            local th = font:getHeight()
+            local yb = stack_y + (i-1) * (th + spacing)
+            if x >= left_x and x <= left_x + tw and y >= yb and y <= yb + th then
+                if item.enabled then selected = i; hovered = i; MainMenu:activate(i) end
+                return
+            end
         end
     end
 end
 
 function MainMenu:mousemoved(x, y, dx, dy)
-    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    local btn_w, btn_h = 340, 60
-    local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
-    local spacing = 12
     hovered = nil
     for i, item in ipairs(menu_items) do
-        local yb = stack_y + (i-1) * (btn_h + spacing)
-        if x >= left_x and x <= left_x + btn_w and y >= yb and y <= yb + btn_h then
-            if item.enabled then hovered = i end
-            break
+        local pos = menu_positions[i]
+        if pos then
+            if x >= pos.x and x <= pos.x + pos.w and y >= pos.y and y <= pos.y + pos.h then
+                if item.enabled then hovered = i end
+                break
+            end
+        else
+            local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+            local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
+            local spacing = 18
+            local font = menu_font or love.graphics.getFont()
+            local text = item.label or ""
+            local tw = font:getWidth(text)
+            local th = font:getHeight()
+            local yb = stack_y + (i-1) * (th + spacing)
+            if x >= left_x and x <= left_x + tw and y >= yb and y <= yb + th then
+                if item.enabled then hovered = i end
+                break
+            end
         end
     end
 end
 
 function MainMenu:activate(idx)
     local item = menu_items[idx]
-    if item.label == "Start Game" then
-        require("src.core.scene_manager").switch("scriptorium")
+    if not item or not item.enabled then return end
+    if item.label == "New Game" or item.label == "Start Game" then
+        local seed = os.time()
+        pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
+        require("src.core.scene_manager").switch("Scriptorium", nil, seed)
+    elseif item.label == "Continue" then
+        -- Try to use a save manager if present
+        local ok, SaveManager = pcall(function() return require("src.engine.save_manager") end)
+        if ok and SaveManager and SaveManager.load then
+            local succ, data = pcall(function() return SaveManager.load() end)
+            if succ and data then
+                log("[MainMenu] Loaded save via SaveManager")
+                local fasc = data.fascicolo_type or data.fascicolo or nil
+                local seed = data.seed or data.random_seed or nil
+                require("src.core.scene_manager").switch("Scriptorium", fasc, seed)
+                return
+            end
+        end
+        if save_file_candidate then
+            log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to Scriptorium (save=%s)", tostring(save_file_candidate)))
+            require("src.core.scene_manager").switch("Scriptorium")
+            return
+        end
+        modal_message = "No saved game found. Start a New Game instead."
+        modal_timer = 3
+    elseif item.label == "Settings" then
+        require("src.core.scene_manager").switch("Settings")
+    elseif item.label == "Wishlist Now!" then
+        if love.system and love.system.openURL then
+            pcall(function() love.system.openURL(WISHLIST_URL) end)
+        else
+            modal_message = "Open the store to wishlist the game: " .. WISHLIST_URL
+            modal_timer = 5
+        end
     elseif item.label == "Quit" then
         love.event.quit()
     else
-        log("[MainMenu] Selected: " .. item.label)
+        log("[MainMenu] Selected (unhandled): " .. tostring(item.label))
     end
 end
 
