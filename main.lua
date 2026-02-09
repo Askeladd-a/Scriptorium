@@ -15,9 +15,10 @@ local Scriptorium = require("src.game.scriptorium")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
 
--- Scene references (popolate in love.load)
-local main_menu_scene = nil
-local run_scene = nil
+-- Module references (popolate in love.load)
+local main_menu_module = nil
+local run_module = nil
+local active_module = nil
 
 -- Configurazione board (dal main.lua originale)
 config = {
@@ -116,23 +117,28 @@ function love.load()
     end
     
     -- ...existing code...
-    -- Carica le scene
-    main_menu_scene = require("src.scenes.main_menu")
-    run_scene = require("src.game.run").scene
+    -- Carica moduli UI/gioco
+    main_menu_module = require("src.scenes.main_menu")
+    run_module = require("src.game.run").scene
     desk_prototype = require("src.scenes.desk_prototype")
     settings_scene = require("src.scenes.settings")
-    startup_splash_scene = require("src.scenes.startup_splash")
-    -- Rendi globali per accesso dalle scene
-    _G.main_menu_scene = main_menu_scene
-    _G.switch_scene = switch_scene
-    -- Imposta la scena iniziale
-    current_scene = startup_splash_scene
-
-    -- Funzione per cambiare scena
-    function switch_scene(scene)
-        if scene and scene.enter then scene:enter() end
-        current_scene = scene
+    local startup_splash_module = require("src.scenes.startup_splash")
+    local modules = {
+        startup_splash = startup_splash_module,
+        main_menu = main_menu_module,
+        desk_prototype = desk_prototype,
+        settings = settings_scene,
+    }
+    -- Funzione per cambiare modulo attivo
+    function set_module(name)
+        local next_module = modules[name]
+        if next_module and next_module.enter then next_module:enter() end
+        active_module = next_module
     end
+    -- Rendi globale per accesso dai moduli
+    _G.set_module = set_module
+    -- Imposta il modulo iniziale
+    set_module("startup_splash")
     -- Setup callback roll
     Scriptorium.onRollRequest = function()
         rollAllDice()
@@ -145,8 +151,8 @@ function love.update(dt)
     -- Check se i dadi si sono fermati
     checkDiceSettled(dt)
     -- Update scena attiva
-    if current_scene and current_scene.update then
-        current_scene:update(dt)
+    if active_module and active_module.update then
+        active_module:update(dt)
     end
     -- Camera/view (dal main.lua originale)
     local dx, dy = love.mouse.delta()
@@ -164,8 +170,24 @@ function love.update(dt)
     end
 end
 
--- love.draw removed: rendering is expected to be handled elsewhere (scenes or a custom renderer).
--- If you need to reintroduce a centralized draw, restore this function or implement an alternative render loop.
+function love.draw()
+    if active_module and active_module.draw then
+        active_module:draw()
+    end
+end
+
+function love.keypressed(key, scancode, isrepeat)
+    if active_module and active_module.keypressed then
+        active_module:keypressed(key, scancode, isrepeat)
+    end
+end
+
+function love.mousepressed(x, y, button)
+    if active_module and active_module.mousepressed then
+        active_module:mousepressed(x, y, button)
+    end
+end
+
 -- Piazzamento temporaneo (Wet Buffer)
 function addToWetBuffer(element, row, col, die, pigment)
     table.insert(WetBuffer, {element=element, row=row, col=col, die=die, pigment=pigment})

@@ -1,29 +1,3 @@
--- Transizione automatica al menu dopo timer o input
-local Splash = {}
-local timer = 0
-local duration = 2.5 -- secondi di splash
-
-function Splash:update(dt)
-    timer = timer + dt
-    if timer >= duration then
-        if _G.switch_scene and _G.main_menu_scene then
-            _G.switch_scene(_G.main_menu_scene)
-        end
-    end
-end
-
-function Splash:keypressed(key)
-    -- Permetti skip con un tasto
-    if _G.switch_scene and _G.main_menu_scene then
-        _G.switch_scene(_G.main_menu_scene)
-    end
-end
-
--- ...existing draw and other methods...
-
--- src/scenes/startup_splash.lua
-local SceneManager = require("src.core.scene_manager")
-
 local Splash = {}
 local logo = nil
 
@@ -37,6 +11,16 @@ local T_INK_DURATION = 2.5
 local T_COMPLETE = 5.5
 
 local titleFont = nil
+local fadeIn = false
+local fadeOut = false
+
+local function switchToMainMenu()
+    if _G.set_module then
+        _G.set_module("main_menu")
+        return true
+    end
+    return false
+end
 
 function Splash:enter()
     timer = 0
@@ -77,7 +61,7 @@ function Splash:update(dt)
     end
     -- complete
     if timer >= T_COMPLETE then
-        SceneManager.switch("MainMenu")
+        switchToMainMenu()
     end
 end
 
@@ -127,11 +111,11 @@ function Splash:draw()
 end
 
 function Splash:keypressed(key)
-    SceneManager.switch("MainMenu")
+    switchToMainMenu()
 end
 
 function Splash:mousepressed(x,y,button)
-    if button == 1 then SceneManager.switch("MainMenu") end
+    if button == 1 then switchToMainMenu() end
 end
 
 return Splash
