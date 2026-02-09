@@ -126,6 +126,8 @@ function love.load()
     local modules = {
         startup_splash = startup_splash_module,
         main_menu = main_menu_module,
+        desk_prototype = desk_prototype,
+        settings = settings_scene,
     }
     -- Funzione per cambiare modulo attivo
     function set_module(name)

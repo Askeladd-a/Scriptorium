@@ -315,11 +315,15 @@ function MainMenu:keypressed(key)
             -- Start a fresh run with a new seed
             local seed = os.time()
             pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
-            require("src.core.scene_manager").switch("Scriptorium", nil, seed)
+            if _G.set_module then
+                _G.set_module("desk_prototype")
+            end
         elseif item.label == "Quit" then
             love.event.quit()
         elseif item.label == "Settings" then
-            require("src.core.scene_manager").switch("Settings")
+            if _G.set_module then
+                _G.set_module("settings")
+            end
         else
             -- Delegate to activate for other items (Continue/Wishlist)
             MainMenu:activate(selected)
@@ -387,7 +391,9 @@ function MainMenu:activate(idx)
     if item.label == "New Game" or item.label == "Start Game" then
         local seed = os.time()
         pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
-        require("src.core.scene_manager").switch("Scriptorium", nil, seed)
+        if _G.set_module then
+            _G.set_module("desk_prototype")
+        end
     elseif item.label == "Continue" then
         -- Try to use a save manager if present
         local ok, SaveManager = pcall(function() return require("src.engine.save_manager") end)
@@ -395,21 +401,25 @@ function MainMenu:activate(idx)
             local succ, data = pcall(function() return SaveManager.load() end)
             if succ and data then
                 log("[MainMenu] Loaded save via SaveManager")
-                local fasc = data.fascicolo_type or data.fascicolo or nil
-                local seed = data.seed or data.random_seed or nil
-                require("src.core.scene_manager").switch("Scriptorium", fasc, seed)
+                if _G.set_module then
+                    _G.set_module("desk_prototype")
+                end
                 return
             end
         end
         if save_file_candidate then
-            log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to Scriptorium (save=%s)", tostring(save_file_candidate)))
-            require("src.core.scene_manager").switch("Scriptorium")
+            log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to desk prototype (save=%s)", tostring(save_file_candidate)))
+            if _G.set_module then
+                _G.set_module("desk_prototype")
+            end
             return
         end
         modal_message = "No saved game found. Start a New Game instead."
         modal_timer = 3
     elseif item.label == "Settings" then
-        require("src.core.scene_manager").switch("Settings")
+        if _G.set_module then
+            _G.set_module("settings")
+        end
     elseif item.label == "Wishlist Now!" then
         if love.system and love.system.openURL then
             pcall(function() love.system.openURL(WISHLIST_URL) end)
