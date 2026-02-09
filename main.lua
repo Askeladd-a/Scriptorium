@@ -128,6 +128,11 @@ function love.load()
         SceneManager.switch("MainMenu")
     end
     SceneManager.register("run", run_scene)
+    -- Registra scena reward
+    require("src.core.register_reward_scene")
+    -- Registra scena prototipo desk
+    local desk_prototype = require("src.scenes.desk_prototype")
+    SceneManager.register("desk_prototype", desk_prototype)
     
     -- Setup callback roll
     Scriptorium.onRollRequest = function()
@@ -135,8 +140,8 @@ function love.load()
     end
     
     -- Avvio scena: direttamente al menu principale (splash rimosso)
-    log("[love.load] switching to MainMenu")
-    SceneManager.switch("MainMenu")
+    log("[love.load] switching to desk_prototype")
+    SceneManager.switch("desk_prototype")
 end
 
 function love.update(dt)

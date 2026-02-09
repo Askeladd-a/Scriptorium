@@ -140,9 +140,13 @@ local run_scene = {}
 local Run = Run
 local current_run = nil
 
-function run_scene.enter()
-    -- Crea nuova run (placeholder: fascicolo BIFOLIO, seed random)
-    current_run = Run.new("BIFOLIO", os.time())
+
+function run_scene.enter(params)
+    if params and params.run then
+        current_run = params.run
+    else
+        current_run = Run.new("BIFOLIO", os.time())
+    end
 end
 
 function run_scene.exit()
@@ -176,10 +180,20 @@ function run_scene.draw()
     love.graphics.setColor(1, 1, 1)
 end
 
+
 function run_scene.keypressed(key, scancode, isrepeat)
     if key == "escape" then
-        -- Torna al menu
         if run_scene.onExit then run_scene.onExit() end
+    elseif key == "n" then
+        -- Simula completamento folio per test
+        if current_run then
+            local completed, status = current_run:nextFolio()
+            if completed and status == "next" then
+                -- Passa a scena reward
+                local scene_manager = require("src.core.scene_manager")
+                scene_manager.switch("reward", {run = current_run})
+            end
+        end
     end
 end
 
