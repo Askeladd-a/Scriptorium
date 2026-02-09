@@ -122,17 +122,20 @@ function love.load()
     run_module = require("src.game.run").scene
     desk_prototype = require("src.scenes.desk_prototype")
     settings_scene = require("src.scenes.settings")
+    local reward_module = require("src.scenes.reward")
     local startup_splash_module = require("src.scenes.startup_splash")
     local modules = {
         startup_splash = startup_splash_module,
         main_menu = main_menu_module,
         desk_prototype = desk_prototype,
         settings = settings_scene,
+        run = run_module,
+        reward = reward_module,
     }
     -- Funzione per cambiare modulo attivo
-    function set_module(name)
+    function set_module(name, params)
         local next_module = modules[name]
-        if next_module and next_module.enter then next_module:enter() end
+        if next_module and next_module.enter then next_module:enter(params) end
         active_module = next_module
     end
     -- Rendi globale per accesso dai moduli
