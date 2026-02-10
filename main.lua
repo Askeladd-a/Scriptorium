@@ -191,6 +191,12 @@ function love.mousepressed(x, y, button)
     end
 end
 
+function love.mousemoved(x, y, dx, dy, istouch)
+    if active_module and active_module.mousemoved then
+        active_module:mousemoved(x, y, dx, dy, istouch)
+    end
+end
+
 -- Piazzamento temporaneo (Wet Buffer)
 function addToWetBuffer(element, row, col, die, pigment)
     table.insert(WetBuffer, {element=element, row=row, col=col, die=die, pigment=pigment})
