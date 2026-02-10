@@ -183,15 +183,20 @@ end
 
 function run_scene.keypressed(key, scancode, isrepeat)
     if key == "escape" then
-        if run_scene.onExit then run_scene.onExit() end
+        if _G.set_module then
+            _G.set_module("main_menu")
+        elseif run_scene.onExit then
+            run_scene.onExit()
+        end
     elseif key == "n" then
         -- Simula completamento folio per test
         if current_run then
             local completed, status = current_run:nextFolio()
             if completed and status == "next" then
-                -- Passa a scena reward
-                local scene_manager = require("src.core.scene_manager")
-                scene_manager.switch("reward", {run = current_run})
+                -- Passa al modulo reward
+                if _G.set_module then
+                    _G.set_module("reward", {run = current_run})
+                end
             end
         end
     end

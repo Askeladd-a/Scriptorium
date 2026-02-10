@@ -49,9 +49,8 @@ function RewardScene:keypressed(key)
     elseif key == "return" or key == "space" then
         if run and shuffled[selected] then
             run:addTool(shuffled[selected])
-            local scene_manager = require("src.core.scene_manager")
-            if scene_manager and scene_manager.change then
-                scene_manager.change("run", {run = run})
+            if _G.set_module then
+                _G.set_module("run", {run = run})
             end
         end
     end
