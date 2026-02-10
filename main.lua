@@ -11,7 +11,7 @@ require("view")
 require("light")
 
 -- Carica moduli gioco (consolidati)
-local Scriptorium = require("src.game.scriptorium")
+local Scriptorium = require("src.scenes.scriptorium")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
 
@@ -127,6 +127,7 @@ function love.load()
     local modules = {
         startup_splash = startup_splash_module,
         main_menu = main_menu_module,
+        scriptorium = Scriptorium,
         desk_prototype = desk_prototype,
         settings = settings_scene,
         run = run_module,
@@ -226,7 +227,7 @@ function bustWetBuffer()
     overlayTimer = OVERLAY_DURATION
 end
 
--- Utility: controlla se almeno un dado è piazzabile (vincoli Sagrada)
+-- Utility: controlla se almeno un dado è piazzabile (vincoli pattern griglia)
 function hasPlacableDice(dice, folio)
     for i, die in ipairs(dice) do
         for _, elem in ipairs(folio.ELEMENTS) do

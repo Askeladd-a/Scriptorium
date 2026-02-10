@@ -1,71 +1,98 @@
-# Copilot instructions for Scriptorium
+# Copilot instructions for `Scriptorium`
 
-## Summary
-- This repository is a LÖVE2D (Lua) game project for **Scriptorium**, with a module-driven UI flow (splash screen, main menu, gameplay modules) and 3D dice rendering. The entry point is `main.lua`, with configuration in `conf.lua` targeting LÖVE **11.4**.
+## 1) Repository summary (read this first)
+- `Scriptorium` is a **LÖVE 2D (Lua)** game prototype: medieval manuscript-themed roguelite loop with dice, folio grids, scene transitions, and progression systems.
+- Codebase size is **small/medium**: root engine-style Lua modules + `src/` gameplay modules + `resources/` assets + design docs.
+- Main runtime target is **LÖVE 11.4** (`conf.lua` sets `t.version = "11.4"`).
 
-## High-level repository info
-- **Project type:** LÖVE2D (Lua) game.
-- **Primary languages:** Lua.
-- **Runtime/framework:** LÖVE 11.4 (see `conf.lua`).
-- **Assets:** `resources/` (textures, UI, sounds), `imported_patterns/`.
+## 2) Tech stack and runtime/tooling
+- Language: **Lua**.
+- Runtime: **LÖVE 11.4** (required to run).
+- Content pipeline scripts for folio/tile cards: **PowerShell** scripts in `resources/tiles/`.
+- No package manager, no compile step, no repo-local lint/test framework, no repo-local CI workflow files.
 
-## Build / Run / Test / Lint
-> **Always install the LÖVE runtime locally before attempting to run the game.** The container does not have `love` installed.
+## 3) Validated commands and exact behavior
+> Always run commands from repo root.
 
-### Bootstrap / Setup
-- Install LÖVE 11.4 from https://love2d.org/ (required).
-- No other bootstrap scripts are present in the repo.
+### Bootstrap
+1. Install **LÖVE 11.4** (always required for runtime validation).
+2. Install **PowerShell** (`pwsh` or Windows PowerShell) only if you need tile/card generation scripts.
 
-### Run (validated command)
-- **Run the game:**
-  - Command: `love .`
-  - **Validation in this container:** `love --version` failed with `command not found` because LÖVE is not installed.
-  - **Workaround:** install LÖVE locally, then run `love .` from repo root.
+Validated in this environment:
+- `love --version` → `command not found` (fails fast, ~0.12s).
+- `pwsh ...` → `command not found` (fails fast, ~0.09s).
 
-### Build
-- There is no build system (no `Makefile`, `package.json`, `Cargo.toml`, etc.). Use the LÖVE runtime to launch directly.
+### Run / Build
+- Canonical run command: `love .`
+- There is no separate build pipeline; for this repo, build validation is a successful `love .` launch.
 
-### Test
-- No automated tests were found.
+Validated in this environment:
+- `love .` → `command not found` (fails fast, ~0.12s).
 
-### Lint / Format
-- No lint or format scripts were found.
+### Tests
+- No automated tests are present.
+- Manual smoke test to run locally (when `love` exists):
+  1. `love .`
+  2. Verify splash → main menu.
+  3. Start gameplay scene and verify no immediate runtime errors.
 
-### Cleaning
-- No clean script or build artifacts were found. If you create temporary artifacts, remove them manually before committing.
+### Lint / format
+- No lint/format config found (`.luacheckrc`, `stylua.toml`, `.stylua.toml` absent).
 
-## Project layout and architecture
-- **Entry point:** `main.lua` (LÖVE callbacks, scene loading). LÖVE always starts from `main.lua` unless you rename files.
-- **Configuration:** `conf.lua` sets window/title and targets LÖVE **11.4**.
-- **Core systems:** `src/core/` (dice faces, reward registration, legacy scene manager).
-- **UI modules:** `src/scenes/` (splash, main menu, settings, scriptorium, reward, desk prototype).
-- **Game logic:** `src/game/` (run loop, folio state, scriptorium).
-- **UI:** `src/ui/` and `src/ui.lua`.
-- **Assets:** `resources/` (textures, UI, sounds, shaders). UI images expected at `resources/ui/`.
-- **Design docs & plans:** `docs/toolkit/` and `plan/feature-ui-mainmenu-1.md`.
+### Other scripted flows (tile/card generation)
+- `resources/tiles/GenerateFolioCards_v2.ps1`: generates `card.txt` (4x5 folio patterns). High-value params: `-Count`, `-Seed`, `-Mode manuscript|balanced`, `-MinWild`, `-MaxWild`, `-MinDistinctSymbols`, `-UniqueGrids`.
+- `resources/tiles/RenderFolioPreviews.ps1`: reads `card.txt` and renders PNG folios to `resources/tiles/FolioPreviews/` using local tile images (`1..6.png`, `w.png`, `O.png`).
+- `resources/tiles/BuildFolioPreviews_SINGLE_v2.ps1`: end-to-end generation and now forwards generation controls (`-Mode`, wild limits, distinct symbols, uniqueness).
+- `resources/tiles/RUN_FOLIOGEN_v2.bat`: Windows wrapper that prefers `pwsh` and falls back to `powershell`.
 
-### CI / Validation pipelines
-- No GitHub Actions workflows are present (no `.github/workflows/`). If CI exists elsewhere, it is not in this repo.
+Practical rule: if a change touches grid/pattern content, always run the PowerShell generator locally and verify that both `card.txt` and `resources/tiles/FolioPreviews/folio_*.png` are produced.
 
-## Key files at repo root (inventory)
-- `main.lua` (entry point)
-- `conf.lua` (LÖVE configuration)
-- `core.lua`, `render.lua`, `physics.lua`, `geometry.lua`, `view.lua`, `light.lua` (engine/graphics utilities)
-- `main_game.lua` (alternative entry point / reference)
-- `docs/`, `plan/`, `resources/`, `src/`, `imported_patterns/`
-- **No `README.md` or `CONTRIBUTING.md` found.**
+## 4) Reliable workflow for agents
+1. `git status --short`
+2. `rg --files` for targeted discovery (avoid broad recursive search unless needed).
+3. Edit minimal files.
+4. Validate what is available:
+   - If `love` installed: run `love .` smoke test.
+   - If changing tile pipeline and `pwsh` installed: run generator script.
+5. `git status --short` again and ensure no unintended artifacts are staged.
 
-## First-level directories (inventory)
-- `src/` → core/game/scene/UI code
-- `resources/` → textures, UI art, sounds, shaders
-- `docs/` → manuals and toolkit documentation
-- `plan/` → implementation plan(s)
-- `imported_patterns/` → external pattern references
+If runtime/tools are missing, explicitly report the limitation and avoid claiming unexecuted validation.
 
-## Notes for efficient changes
-- Prefer editing scene files in `src/scenes/` for UI flow changes.
-- Asset paths used in code generally assume direct access under `resources/` (e.g., `resources/ui/splash.png`).
-- If you add new assets, ensure they follow existing naming conventions and are referenced from scene code.
+## 5) Project layout map (high-signal paths)
+- Entry/config:
+  - `main.lua` (effective LÖVE entrypoint; module wiring and callbacks)
+  - `conf.lua` (window + `t.version = "11.4"`)
+- Engine-like root modules: `core.lua`, `render.lua`, `physics.lua`, `geometry.lua`, `view.lua`, `light.lua`.
+- Game modules:
+  - `src/content/` (pigments, binders, patterns)
+  - `src/game/` (folio/run logic)
+  - `src/scenes/` (startup splash, main menu, settings, gameplay, reward)
+  - `src/ui/` and `src/ui.lua` (HUD/render helpers)
+- Assets:
+  - `resources/ui/`, `resources/sounds/`, `resources/font/`, `resources/textures/`, `resources/tiles/`, `resources/shaders/`
+- Docs/plans:
+  - `docs/toolkit/` (design docs)
+  - `plan/feature-ui-mainmenu-1.md` (manual validation expectations using `love .`)
 
-## Final guidance
-- Trust the instructions above; only search further if information is missing or incorrect.
+## 6) Check-in / CI expectations
+- No `.github/workflows/` directory detected in this repo.
+- No Make/Just/npm/cargo pipelines detected.
+- Pre-checkin confidence should come from:
+  1. Local runtime smoke test (`love .`) when available.
+  2. Asset path verification for any changed scene/UI code.
+  3. For tile pipeline changes, local script run + generated image sanity check.
+
+## 7) Known pitfalls
+- `main.lua` is the real LÖVE entrypoint even if `main_game.lua` exists.
+- Asset path/case mismatches are a common breakage source.
+- PowerShell scripts assume being run from `resources/tiles` context (scripts generally set location to script root).
+- `make` is not a valid project build entrypoint (no Makefile).
+
+## 8) Root inventory quick list
+- Files: `main.lua`, `conf.lua`, `main_game.lua`, `core.lua`, `render.lua`, `physics.lua`, `geometry.lua`, `view.lua`, `light.lua`
+- Directories: `.github/`, `src/`, `resources/`, `docs/`, `plan/`
+- `README.md` and `CONTRIBUTING.md` are currently absent.
+
+## 9) Agent policy
+- **Trust this file first** to reduce exploration cost.
+- Search beyond it only when (a) requested task needs missing details, or (b) instructions are proven outdated/incorrect.
