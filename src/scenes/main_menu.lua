@@ -316,7 +316,7 @@ function MainMenu:keypressed(key)
             local seed = os.time()
             pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
             if _G.set_module then
-                _G.set_module("desk_prototype")
+                _G.set_module("scriptorium")
             end
         elseif item.label == "Quit" then
             love.event.quit()
@@ -392,7 +392,7 @@ function MainMenu:activate(idx)
         local seed = os.time()
         pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
         if _G.set_module then
-            _G.set_module("desk_prototype")
+            _G.set_module("scriptorium")
         end
     elseif item.label == "Continue" then
         -- Try to use a save manager if present
@@ -402,7 +402,7 @@ function MainMenu:activate(idx)
             if succ and data then
                 log("[MainMenu] Loaded save via SaveManager")
                 if _G.set_module then
-                    _G.set_module("desk_prototype")
+                    _G.set_module("scriptorium")
                 end
                 return
             end
@@ -410,7 +410,7 @@ function MainMenu:activate(idx)
         if save_file_candidate then
             log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to desk prototype (save=%s)", tostring(save_file_candidate)))
             if _G.set_module then
-                _G.set_module("desk_prototype")
+                _G.set_module("scriptorium")
             end
             return
         end
