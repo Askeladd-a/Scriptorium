@@ -191,11 +191,9 @@ end
 
 function DeskPrototype:mousepressed(x, y, button, istouch, presses)
     if button ~= 1 then return end
-    -- ensure hovered_cell is computed even if mouse wasn't moved before click
-    if not hovered_cell then
-        -- call mousemoved logic to compute hovered_cell for the click position
-        self:mousemoved(x, y, 0, 0, false)
-    end
+    -- Always recompute hovered cell based on click position.
+    -- This prevents stale hover state from re-selecting the previous cell.
+    self:mousemoved(x, y, 0, 0, false)
     if hovered_cell then
         -- toggle selection: deselect if clicking the already-selected cell
         if selected_cell and selected_cell.side == hovered_cell.side and selected_cell.grid == hovered_cell.grid
