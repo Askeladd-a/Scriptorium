@@ -226,7 +226,7 @@ function bustWetBuffer()
     overlayTimer = OVERLAY_DURATION
 end
 
--- Utility: controlla se almeno un dado è piazzabile (vincoli Sagrada)
+-- Utility: controlla se almeno un dado è piazzabile (vincoli pattern griglia)
 function hasPlacableDice(dice, folio)
     for i, die in ipairs(dice) do
         for _, elem in ipairs(folio.ELEMENTS) do

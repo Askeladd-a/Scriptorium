@@ -1,14 +1,35 @@
 # GenerateFolioCards_v2.ps1
 # Compatibile sia con Windows PowerShell 5.1 che con PowerShell 7+
-# Genera un card.txt (formato Sagrada: 7 righe per carta) con folii casuali 4x5.
+# Genera un card.txt (formato folio card: 7 righe per carta) con folii casuali 4x5.
 
 param(
+  [ValidateRange(1, 10000)]
   [int]$Count = 30,
+
   [string]$OutFile = ".\card.txt",
+
   [int]$Seed = -1,
+
+  [ValidateRange(0, 6)]
   [int]$MinO = 0,
+
+  [ValidateRange(0, 6)]
   [int]$MaxO = 6,
+
+  [ValidateRange(0, 20)]
   [int]$MinWild = 4,
+
+  [ValidateRange(0, 20)]
+  [int]$MaxWild = 12,
+
+  [ValidateRange(1, 20)]
+  [int]$MinDistinctSymbols = 4,
+
+  [ValidateRange(1, 5000)]
+  [int]$MaxAttemptsPerCard = 300,
+
+  [switch]$UniqueGrids,
+
   [ValidateSet("manuscript","balanced")]
   [string]$Mode = "manuscript"
 )
@@ -19,6 +40,13 @@ $ErrorActionPreference = "Stop"
 # Forza la working directory alla cartella dello script (utile se avviato con doppio click)
 if ($PSScriptRoot -and (Test-Path $PSScriptRoot)) {
   Set-Location -Path $PSScriptRoot
+}
+
+if ($MaxO -lt $MinO) {
+  throw "Range O non valido: MinO ($MinO) > MaxO ($MaxO)."
+}
+if ($MaxWild -lt $MinWild) {
+  throw "Range wild non valido: MinWild ($MinWild) > MaxWild ($MaxWild)."
 }
 
 # RNG compatibile (PS 5.1 non ha Get-Random -SetSeed)
@@ -48,7 +76,31 @@ function Get-WeightedRandomSymbol {
   return [string]($Weights.Keys | Select-Object -First 1)
 }
 
-# Maschera sezioni 4x5 (solo per pesi “da manoscritto”)
+function Get-GridStats {
+  param([string[,]]$Grid)
+  $counts = @{}
+  for ($i=0; $i -lt 4; $i++) {
+    for ($j=0; $j -lt 5; $j++) {
+      $sym = [string]$Grid[$i,$j]
+      if (-not $counts.ContainsKey($sym)) { $counts[$sym] = 0 }
+      $counts[$sym] = [int]$counts[$sym] + 1
+    }
+  }
+  return $counts
+}
+
+function Grid-ToSignature {
+  param([string[,]]$Grid)
+  $rows = @()
+  for ($i=0; $i -lt 4; $i++) {
+    $s = ""
+    for ($j=0; $j -lt 5; $j++) { $s += $Grid[$i,$j] }
+    $rows += $s
+  }
+  return ($rows -join "|")
+}
+
+# Maschera sezioni 4x5
 $SectionMask = @(
   @("C","C","T","M","M"),
   @("C","C","T","M","M"),
@@ -75,27 +127,34 @@ if ($Mode -eq "manuscript") {
 
 function New-FolioGrid {
   param(
-    [int]$MinWildLocal = 4,
-    [int]$MaxAttempts = 300
+    [int]$MinWildLocal,
+    [int]$MaxWildLocal,
+    [int]$MinDistinct,
+    [int]$MaxAttempts
   )
 
   for ($attempt = 0; $attempt -lt $MaxAttempts; $attempt++) {
     $grid = New-Object 'string[,]' 4,5
-    $wildCount = 0
 
     for ($i=0; $i -lt 4; $i++) {
       for ($j=0; $j -lt 5; $j++) {
         $section = $SectionMask[$i][$j]
         $sym = Get-WeightedRandomSymbol -Weights $WeightsBySection[$section]
         $grid[$i,$j] = $sym
-        if ($sym -eq "w") { $wildCount++ }
       }
     }
 
-    if ($wildCount -ge $MinWildLocal) { return $grid }
+    $stats = Get-GridStats -Grid $grid
+    $wildCount = 0
+    if ($stats.ContainsKey('w')) { $wildCount = [int]$stats['w'] }
+    $distinctCount = $stats.Keys.Count
+
+    if ($wildCount -ge $MinWildLocal -and $wildCount -le $MaxWildLocal -and $distinctCount -ge $MinDistinct) {
+      return $grid
+    }
   }
 
-  throw "Impossibile generare una griglia valida dopo $MaxAttempts tentativi. Abbassa -MinWild o usa -Mode balanced."
+  throw "Impossibile generare una griglia valida dopo $MaxAttempts tentativi. Riduci i vincoli (MinDistinct/MinWild/MaxWild) o cambia mode."
 }
 
 function Grid-ToLines {
@@ -109,15 +168,38 @@ function Grid-ToLines {
   return $lines
 }
 
-# Scrittura file
 $sb = New-Object System.Text.StringBuilder
+$seen = @{}
+$duplicatesSkipped = 0
 
 for ($idx=1; $idx -le $Count; $idx++) {
   $folioId = ("folio_{0:D4}" -f $idx)
   $title = "Folio $idx"
   $oVal = Get-RandIntInclusive -Min $MinO -Max $MaxO
 
-  $grid = New-FolioGrid -MinWildLocal $MinWild
+  $grid = $null
+
+  if ($UniqueGrids) {
+    $maxUniqRetries = 200
+    for ($r=0; $r -lt $maxUniqRetries; $r++) {
+      $candidate = New-FolioGrid -MinWildLocal $MinWild -MaxWildLocal $MaxWild -MinDistinct $MinDistinctSymbols -MaxAttempts $MaxAttemptsPerCard
+      $sig = Grid-ToSignature -Grid $candidate
+      if (-not $seen.ContainsKey($sig)) {
+        $grid = $candidate
+        $seen[$sig] = $true
+        break
+      }
+      $duplicatesSkipped++
+    }
+
+    if ($null -eq $grid) {
+      throw "Non sono riuscito a generare una griglia unica per il folio $idx dopo $maxUniqRetries tentativi."
+    }
+  }
+  else {
+    $grid = New-FolioGrid -MinWildLocal $MinWild -MaxWildLocal $MaxWild -MinDistinct $MinDistinctSymbols -MaxAttempts $MaxAttemptsPerCard
+  }
+
   $gridLines = Grid-ToLines -Grid $grid
 
   [void]$sb.AppendLine($title)
@@ -127,6 +209,7 @@ for ($idx=1; $idx -le $Count; $idx++) {
 }
 
 $fullOut = [System.IO.Path]::GetFullPath($OutFile)
-[System.IO.File]::WriteAllText($fullOut, $sb.ToString(), [System.Text.Encoding]::UTF8)
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($fullOut, $sb.ToString(), $utf8NoBom)
 
-Write-Host "OK: creato $fullOut con $Count folii. Mode=$Mode Seed=$Seed MinWild=$MinWild O=[$MinO..$MaxO]"
+Write-Host "OK: creato $fullOut con $Count folii. Mode=$Mode Seed=$Seed MinWild=$MinWild MaxWild=$MaxWild MinDistinct=$MinDistinctSymbols Unique=$($UniqueGrids.IsPresent) DuplicatiScartati=$duplicatesSkipped O=[$MinO..$MaxO]"
