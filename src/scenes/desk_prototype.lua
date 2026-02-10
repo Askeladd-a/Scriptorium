@@ -137,8 +137,8 @@ function DeskPrototype:draw()
     love.graphics.printf("LANCIA DADI", w/2-120, h-86, 240, "center")
 end
 
-function DeskPrototype:mousemoved(x, y, dx, dy, istouch)
-    -- compute same layout as draw to detect hover
+local function find_cell_at(x, y)
+    -- compute same layout as draw to detect hover/click targets
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
     local page_margin_x, page_margin_y = 220, 60
     local page_gap = 60
@@ -148,7 +148,6 @@ function DeskPrototype:mousemoved(x, y, dx, dy, istouch)
     local right_x = page_margin_x + page_w + page_gap
     local page_y = page_margin_y + 40
 
-    -- match draw: comfortable grid size (use same multipliers as draw())
     local grid_w = page_w * 0.38
     local grid_h = ((page_h - page_gap) / 2) * 0.69
     local grid_gap_y = 60
@@ -157,7 +156,6 @@ function DeskPrototype:mousemoved(x, y, dx, dy, istouch)
     local cell_pad = 10
     local box_pad = 12
 
-    hovered_cell = nil
     for side=1,2 do
         local base_x = (side==1) and left_x or right_x
         for i=0,1 do
@@ -180,27 +178,32 @@ function DeskPrototype:mousemoved(x, y, dx, dy, istouch)
                     local cx = offset_x + cell_pad + c*(cell_size+cell_pad)
                     local cy = offset_y + cell_pad + r*(cell_size+cell_pad)
                     if x >= cx and x <= cx+cell_size and y >= cy and y <= cy+cell_size then
-                        hovered_cell = {side=(side==1) and "left" or "right", grid=i+1, row=r+1, col=c+1}
-                        return
+                        return {side=(side==1) and "left" or "right", grid=i+1, row=r+1, col=c+1}
                     end
                 end
             end
         end
     end
+
+    return nil
+end
+
+function DeskPrototype:mousemoved(x, y, dx, dy, istouch)
+    hovered_cell = find_cell_at(x, y)
 end
 
 function DeskPrototype:mousepressed(x, y, button, istouch, presses)
     if button ~= 1 then return end
-    -- Always recompute hovered cell based on click position.
-    -- This prevents stale hover state from re-selecting the previous cell.
-    self:mousemoved(x, y, 0, 0, false)
-    if hovered_cell then
-        -- toggle selection: deselect if clicking the already-selected cell
-        if selected_cell and selected_cell.side == hovered_cell.side and selected_cell.grid == hovered_cell.grid
-           and selected_cell.row == hovered_cell.row and selected_cell.col == hovered_cell.col then
+
+    local clicked_cell = find_cell_at(x, y)
+    hovered_cell = clicked_cell
+
+    if clicked_cell then
+        if selected_cell and selected_cell.side == clicked_cell.side and selected_cell.grid == clicked_cell.grid
+           and selected_cell.row == clicked_cell.row and selected_cell.col == clicked_cell.col then
             selected_cell = nil
         else
-            selected_cell = {side=hovered_cell.side, grid=hovered_cell.grid, row=hovered_cell.row, col=hovered_cell.col}
+            selected_cell = {side=clicked_cell.side, grid=clicked_cell.grid, row=clicked_cell.row, col=clicked_cell.col}
         end
     end
 end
