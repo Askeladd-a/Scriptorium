@@ -2,6 +2,7 @@
 -- Gestisce una run completa (fascicolo di N folii)
 
 local Folio = require("src.game.folio")
+local RuntimeUI = require("src.core.runtime_ui")
 
 local Run = {}
 Run.__index = Run
@@ -63,16 +64,16 @@ function Run:nextFolio()
         self.coins = self.coins + reward.coins
         self.reputation = self.reputation + reward.reputation
         
-        log(string.format("[Run] Folio %d completato! +%d coins, +%d rep", 
+        log(string.format("[Run] Folio %d completed! +%d coins, +%d rep", 
             self.current_folio_index, reward.coins, reward.reputation))
         
         table.insert(self.completed_folii, self.current_folio)
         self.current_folio_index = self.current_folio_index + 1
         
-        -- Check vittoria
+        -- Victory check
         if self.current_folio_index > self.total_folii then
             self.victory = true
-            log("[Run] VITTORIA! Fascicolo completato!")
+            log("[Run] VICTORY! Folio set completed!")
             return true, "victory"
         end
         
@@ -89,7 +90,7 @@ function Run:nextFolio()
         -- Check game over
         if self.reputation <= 0 then
             self.game_over = true
-            log("[Run] GAME OVER! Reputazione esaurita!")
+            log("[Run] GAME OVER! Reputation depleted!")
             return false, "game_over"
         end
         
@@ -139,6 +140,10 @@ end
 local run_scene = {}
 local Run = Run
 local current_run = nil
+local run_title_font = nil
+local run_body_font = nil
+local run_title_size = 0
+local run_body_size = 0
 
 
 function run_scene.enter(params)
@@ -158,14 +163,28 @@ function run_scene.update(dt)
 end
 
 function run_scene.draw()
-    love.graphics.setBackgroundColor(0.15, 0.12, 0.18)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.setFont(love.graphics.newFont(24))
+    local high_contrast = RuntimeUI.high_contrast()
+    local bg = high_contrast and {0.08, 0.08, 0.10} or {0.15, 0.12, 0.18}
+    local title_size = RuntimeUI.sized(24)
+    local body_size = RuntimeUI.sized(16)
+    if not run_title_font or run_title_size ~= title_size then
+        local ok, f = pcall(function() return love.graphics.newFont(title_size) end)
+        run_title_font = (ok and f) or love.graphics.getFont()
+        run_title_size = title_size
+    end
+    if not run_body_font or run_body_size ~= body_size then
+        local ok, f = pcall(function() return love.graphics.newFont(body_size) end)
+        run_body_font = (ok and f) or love.graphics.getFont()
+        run_body_size = body_size
+    end
+    love.graphics.setBackgroundColor(bg[1], bg[2], bg[3])
+    love.graphics.setColor(high_contrast and 1.0 or 0.95, high_contrast and 1.0 or 0.95, high_contrast and 1.0 or 0.95)
+    love.graphics.setFont(run_title_font)
     love.graphics.print("GAME RUN - Placeholder", 60, 100)
     if current_run then
         local status = current_run:getStatus()
-        love.graphics.setFont(love.graphics.newFont(16))
-        love.graphics.print("Fascicolo: " .. status.fascicolo, 60, 140)
+        love.graphics.setFont(run_body_font)
+        love.graphics.print("Folio Set: " .. status.fascicolo, 60, 140)
         love.graphics.print("Folio: " .. status.folio, 60, 160)
         love.graphics.print("Reputation: " .. status.reputation, 60, 180)
         love.graphics.print("Coins: " .. status.coins, 60, 200)
@@ -173,10 +192,10 @@ function run_scene.draw()
         if status.game_over then
             love.graphics.print("GAME OVER!", 60, 260)
         elseif status.victory then
-            love.graphics.print("VITTORIA!", 60, 260)
+            love.graphics.print("VICTORY!", 60, 260)
         end
     end
-    love.graphics.print("Premi ESC per tornare al menu", 60, 300)
+    love.graphics.print("Press ESC to return to menu", 60, 300)
     love.graphics.setColor(1, 1, 1)
 end
 

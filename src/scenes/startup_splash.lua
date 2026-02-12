@@ -1,4 +1,6 @@
 local Splash = {}
+local AudioManager = require("src.core.audio_manager")
+local RuntimeUI = require("src.core.runtime_ui")
 local logo = nil
 
 -- Animation state
@@ -11,6 +13,7 @@ local T_INK_DURATION = 2.5
 local T_COMPLETE = 5.5
 
 local titleFont = nil
+local titleFontSize = 0
 local fadeIn = false
 local fadeOut = false
 
@@ -30,37 +33,46 @@ function Splash:enter()
     -- load background if present
     pcall(function() logo = love.graphics.newImage("resources/ui/splash.png") end)
     -- load fonts (fall back to default if missing)
-    if not titleFont then
+    local desiredSize = RuntimeUI.sized(96)
+    if not titleFont or titleFontSize ~= desiredSize then
         -- Try several Manuskript font filenames (exact provided file, then common fallback)
         local candidates = {
             "resources/font/ManuskriptGothischUNZ1A.ttf"
         }
         local loaded = false
         for _, fname in ipairs(candidates) do
-            local ok, f = pcall(function() return love.graphics.newFont(fname, 96) end)
+            local ok, f = pcall(function() return love.graphics.newFont(fname, desiredSize) end)
             if ok and f then
                 titleFont = f
+                titleFontSize = desiredSize
                 loaded = true
                 break
             end
         end
         if not loaded then
-            local ok2, f2 = pcall(function() return love.graphics.newFont(96) end)
+            local ok2, f2 = pcall(function() return love.graphics.newFont(desiredSize) end)
             titleFont = (ok2 and f2) or love.graphics.getFont()
+            titleFontSize = desiredSize
         end
     end
     -- subtitle removed (design uses only the main title)
 end
 
 function Splash:update(dt)
-    timer = timer + dt
+    local reduced = RuntimeUI.reduced_animations()
+    local speed = reduced and 2.8 or 1.0
+    local ink_start = reduced and (T_INK_START * 0.20) or T_INK_START
+    local ink_duration = reduced and (T_INK_DURATION * 0.35) or T_INK_DURATION
+    local complete_time = reduced and (T_COMPLETE * 0.42) or T_COMPLETE
+
+    timer = timer + dt * speed
     -- ink animation
-    if timer >= T_INK_START then
-        local t = math.min((timer - T_INK_START) / T_INK_DURATION, 1)
+    if timer >= ink_start then
+        local t = math.min((timer - ink_start) / ink_duration, 1)
         inkProgress = t
     end
     -- complete
-    if timer >= T_COMPLETE then
+    if timer >= complete_time then
         switchToMainMenu()
     end
 end
@@ -80,6 +92,7 @@ end
 
 function Splash:draw()
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    local high_contrast = RuntimeUI.high_contrast()
     if love.graphics.clear then love.graphics.clear(0, 0, 0, 1) end
 
     -- Background
@@ -92,11 +105,11 @@ function Splash:draw()
     love.graphics.setFont(tf)
     local title = "Scriptorium"
     -- Outline/background faint text
-    love.graphics.setColor(0.09,0.05,0.03,0.12)
+    love.graphics.setColor(0.09,0.05,0.03,high_contrast and 0.22 or 0.12)
     love.graphics.printf(title, 0, h/2 - 80, w, "center")
 
     -- Ink reveal: draw masked filled text by using scissor
-    love.graphics.setColor(0.17,0.09,0.05)
+    love.graphics.setColor(high_contrast and 0.10 or 0.17, high_contrast and 0.05 or 0.09, high_contrast and 0.02 or 0.05)
     local textWidth = tf:getWidth(title)
     local tx = (w - textWidth) / 2
     local ty = h/2 - 80
@@ -111,11 +124,15 @@ function Splash:draw()
 end
 
 function Splash:keypressed(key)
+    AudioManager.play_ui("confirm")
     switchToMainMenu()
 end
 
 function Splash:mousepressed(x,y,button)
-    if button == 1 then switchToMainMenu() end
+    if button == 1 then
+        AudioManager.play_ui("confirm")
+        switchToMainMenu()
+    end
 end
 
 return Splash

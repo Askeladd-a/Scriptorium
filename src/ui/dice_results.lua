@@ -12,12 +12,12 @@ local COLORS = {
 }
 
 local DIE_DISPLAY = {
-    [1] = {color = COLORS.stain, label = "MACCHIA!"},
+    [1] = {color = COLORS.stain, label = "STAIN!"},
     [2] = {color = COLORS.fill, label = "+1 slot"},
     [3] = {color = COLORS.fill, label = "+1 slot"},
     [4] = {color = COLORS.fill, label = "+1 slot"},
     [5] = {color = COLORS.fill, label = "+1 slot"},
-    [6] = {color = COLORS.golden, label = "ORO!"},
+    [6] = {color = COLORS.golden, label = "GOLD!"},
 }
 
 --- Disegna pannello risultati dadi

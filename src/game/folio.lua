@@ -90,22 +90,22 @@ end
 function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
     local elem = self.elements[element]
     if not elem then
-        return false, "Elemento non valido: " .. tostring(element)
+        return false, "Invalid element: " .. tostring(element)
     end
     
     if not elem.unlocked then
-        return false, element .. " non ancora sbloccato"
+        return false, element .. " not unlocked yet"
     end
     
     if elem.completed then
-        return false, element .. " già completato"
+        return false, element .. " already completed"
     end
     
     local pattern = elem.pattern
     
     -- Verifica bounds
     if row < 1 or row > pattern.rows or col < 1 or col > pattern.cols then
-        return false, "Cella fuori dalla griglia"
+        return false, "Cell out of bounds"
     end
     
     -- Calcola indice
@@ -113,7 +113,7 @@ function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
     
     -- Verifica cella non già occupata
     if elem.placed[index] then
-        return false, "Cella già occupata"
+        return false, "Cell already occupied"
     end
     
     -- Verifica vincolo pattern
@@ -136,7 +136,7 @@ function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
         self:onElementCompleted(element)
     end
     
-    return true, string.format("%s: piazzato %s (%d) in [%d,%d]", 
+    return true, string.format("%s: placed %s (%d) at [%d,%d]", 
         element, diceColor, diceValue, row, col)
 end
 
@@ -151,28 +151,28 @@ end
 function Folio:canPlaceDie(element, row, col, diceValue, diceColor)
     local elem = self.elements[element]
     if not elem then
-        return false, "Elemento non valido"
+        return false, "Invalid element"
     end
     
     if not elem.unlocked then
-        return false, "Non sbloccato"
+        return false, "Locked"
     end
     
     if elem.completed then
-        return false, "Già completato"
+        return false, "Already completed"
     end
     
     local pattern = elem.pattern
     
     -- Bounds
     if row < 1 or row > pattern.rows or col < 1 or col > pattern.cols then
-        return false, "Fuori griglia"
+        return false, "Out of bounds"
     end
     
     -- Già occupata
     local index = Patterns.rowColToIndex(pattern, row, col)
     if elem.placed[index] then
-        return false, "Occupata"
+        return false, "Occupied"
     end
     
     -- Vincolo pattern
@@ -257,7 +257,7 @@ end
 
 --- Callback completamento elemento
 function Folio:onElementCompleted(element)
-    log("[Folio] Completato: " .. element)
+    log("[Folio] Completed: " .. element)
     
     -- Sblocca elemento successivo
     local idx = nil
@@ -267,7 +267,7 @@ function Folio:onElementCompleted(element)
     if idx and idx < #Folio.ELEMENTS then
         local next_elem = Folio.ELEMENTS[idx + 1]
         self.elements[next_elem].unlocked = true
-        log("[Folio] Sbloccato: " .. next_elem)
+        log("[Folio] Unlocked: " .. next_elem)
     end
     
     -- Applica bonus
@@ -279,7 +279,7 @@ function Folio:onElementCompleted(element)
     -- Check completamento folio (TEXT + MINIATURE obbligatori)
     if self.elements.TEXT.completed and self.elements.MINIATURE.completed then
         self.completed = true
-        log("[Folio] FOLIO COMPLETATO!")
+        log("[Folio] FOLIO COMPLETED!")
     end
 end
 
@@ -295,17 +295,17 @@ function Folio:addStain(amount)
         self.shield = self.shield - absorbed
         amount = amount - absorbed
         if absorbed > 0 then
-            log("[Folio] Shield ha assorbito " .. absorbed .. " macchia/e")
+            log("[Folio] Shield absorbed " .. absorbed .. " stain(s)")
         end
     end
     
     self.stain_count = self.stain_count + amount
-    log(string.format("[Folio] Macchie: %d/%d", self.stain_count, self.stain_threshold))
+    log(string.format("[Folio] Stains: %d/%d", self.stain_count, self.stain_threshold))
     
     -- Check bust
     if self.stain_count >= self.stain_threshold then
         self.busted = true
-        log("[Folio] BUST! Troppa macchia!")
+        log("[Folio] BUST! Too many stains!")
         return true
     end
     
@@ -316,7 +316,7 @@ end
 function Folio:removeStain(amount)
     amount = amount or 1
     self.stain_count = math.max(0, self.stain_count - amount)
-    log(string.format("[Folio] Macchia rimossa. Ora: %d/%d", self.stain_count, self.stain_threshold))
+    log(string.format("[Folio] Stain removed. Now: %d/%d", self.stain_count, self.stain_threshold))
 end
 
 --- Stato debug
@@ -345,7 +345,7 @@ end
 function Folio:debugPrint()
     log("\n" .. string.rep("═", 60))
     log("FOLIO: " .. self.fascicolo)
-    log(string.format("Macchie: %d/%d | Shield: %d | Busted: %s | Completed: %s",
+    log(string.format("Stains: %d/%d | Shield: %d | Busted: %s | Completed: %s",
         self.stain_count, self.stain_threshold, self.shield,
         tostring(self.busted), tostring(self.completed)))
     log(string.rep("─", 60))
@@ -450,7 +450,7 @@ function Run:nextFolio()
         self.coins = self.coins + reward.coins
         self.reputation = self.reputation + reward.reputation
         
-        print(string.format("[Run] Folio %d completato! +%d coins, +%d rep", 
+        print(string.format("[Run] Folio %d completed! +%d coins, +%d rep", 
             self.current_folio_index, reward.coins, reward.reputation))
         
         table.insert(self.completed_folii, self.current_folio)
@@ -459,7 +459,7 @@ function Run:nextFolio()
         -- Check vittoria
         if self.current_folio_index > self.total_folii then
             self.victory = true
-            log("[Run] VITTORIA! Fascicolo completato!")
+            log("[Run] VICTORY! Folio set completed!")
             return true, "victory"
         end
         
@@ -476,7 +476,7 @@ function Run:nextFolio()
         -- Check game over
         if self.reputation <= 0 then
             self.game_over = true
-            log("[Run] GAME OVER! Reputazione esaurita!")
+            log("[Run] GAME OVER! Reputation depleted!")
             return false, "game_over"
         end
         
@@ -527,3 +527,4 @@ return {
     Folio = Folio,
     Run = Run,
 }
+

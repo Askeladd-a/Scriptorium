@@ -434,7 +434,7 @@ function render.tray_border(action, border_width, border_height, border_color)
       }
       local mesh = love.graphics.newMesh(vertices, "fan", "stream")
       mesh:setTexture(texture)
-      love.graphics.setColor(o, 0, 0, 0)
+      love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(mesh)
     end)
   end

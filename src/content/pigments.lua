@@ -1,18 +1,18 @@
 -- src/content/pigments.lua
--- Database pigmenti storici basato su "The Medieval Manuscript" (Charles)
--- Include tossicità, origine e uso attestato nel folio
+-- Historical pigment database based on "The Medieval Manuscript" (Charles)
+-- Includes toxicity, origin, and attested folio usage
 
 local Pigments = {}
 
--- Livelli di tossicità
+-- Toxicity levels
 Pigments.TOXICITY = {
-    SAFE = 0,        -- Sicuro
-    MILD = 1,        -- Lievemente tossico
-    MODERATE = 2,    -- Moderatamente tossico  
-    HIGH = 3,        -- Altamente tossico (arsenico, mercurio, piombo)
+    SAFE = 0,        -- Safe
+    MILD = 1,        -- Mildly toxic
+    MODERATE = 2,    -- Moderately toxic  
+    HIGH = 3,        -- Highly toxic (arsenic, mercury, lead)
 }
 
--- Tier di unlock (progressione nel gioco)
+-- Unlock tiers (game progression)
 Pigments.TIERS = {
     [1] = {"OCRA_ROSSA", "OCRA_GIALLA", "OCRA_BRUNA", "NERO_CARBONIOSO", 
            "NERO_FERROGALLICO", "CRETA", "GESSO", "GUSCIO_UOVO"},
@@ -25,43 +25,43 @@ Pigments.TIERS = {
 }
 
 -- ══════════════════════════════════════════════════════════════════
--- DATABASE PIGMENTI
+-- PIGMENT DATABASE
 -- ══════════════════════════════════════════════════════════════════
 Pigments.data = {
 
     -- ══════════════════════════════════════════════════════════════
-    -- ROSSI E ARANCIONI
+    -- REDS AND ORANGES
     -- ══════════════════════════════════════════════════════════════
     
     OCRA_ROSSA = {
-        name = "Ocra Rossa",
+        name = "Red Ochre",
         name_en = "Red Ochre",
         color = {180, 60, 40},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "mineral",  -- Pigmento minerale naturale (ematite/ossido di ferro)
-        preparation = "Lavaggio e macinazione della terra/roccia colorata.",
+        origin = "mineral",  -- Natural mineral pigment (hematite/iron oxide)
+        preparation = "Wash and levigate hematite-rich earth, discard coarse sand, and dry the fine fraction.",
         folio_use = {
-            text = nil,        -- Non specificato
-            dropcaps = true,   -- Sì (capital letters)
+            text = nil,        -- Not specified
+            dropcaps = true,   -- Yes (capital letters)
             borders = false,
             corners = false,
-            miniature = nil,   -- Non specificato
+            miniature = nil,   -- Not specified
         },
         effects = {},
-        description = "Pigmento minerale naturale, sicuro e affidabile per lettere capitali.",
+        description = "Reliable non-toxic earth red used from rubrication accents to broad underpainting.",
     },
     
     ROBBIA = {
-        name = "Robbia",
+        name = "Madder Lake",
         name_en = "Madder Lake",
         color = {160, 50, 60},
         tier = 3,
-        toxicity = 0,  -- "Perfettamente sicura"
+        toxicity = 0,  -- "Perfectly safe"
         cost = 20,
         origin = "organic_plant",  -- Rubia tinctorum
-        preparation = "Radici mature (3-4 anni), essiccazione, estrazione con allume e liscivia.",
+        preparation = "Extract color from madder roots, precipitate with alum, then dry and grind the lake pigment.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -70,55 +70,55 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {
-            safe_red = true,  -- Alternativa sicura ai rossi tossici
+            safe_red = true,  -- Safe alternative to toxic reds
         },
-        description = "Lacca da radici di robbia. Sicura (le radici si usano anche per il tè).",
+        description = "Transparent organic red with elegant depth, favored when a safer crimson is needed.",
     },
     
     MINIO = {
-        name = "Minio",
+        name = "Red Lead / Minium",
         name_en = "Red Lead / Minium",
         color = {230, 90, 50},
         tier = 4,
-        toxicity = 3,  -- "Highly toxic" (piombo)
+        toxicity = 3,  -- "Highly toxic" (lead)
         cost = 25,
-        origin = "artificial",  -- Ossidi di piombo
-        preparation = "Piombo esposto a vapori di aceto, poi riscaldamento.",
+        origin = "artificial",  -- Lead oxides
+        preparation = "Use finely ground red lead and mull it carefully with binder to avoid dust exposure.",
         folio_use = {
-            text = true,       -- Possibile per rubriche
-            dropcaps = true,   -- Sì
+            text = true,       -- Possible for rubrication
+            dropcaps = true,   -- Yes
             borders = false,
             corners = false,
-            miniature = true,  -- Identificato in ritratti
+            miniature = true,  -- Identified in portraits
         },
         effects = {
             bonus_dropcaps = 1,  -- +1 slot su DROPCAPS
-            origin_miniature = true,  -- Da "minium" deriva "miniatura"
+            origin_miniature = true,  -- From "minium" comes "miniature"
         },
-        description = "Rosso-arancio intenso. Da cui deriva 'miniatura'. ALTAMENTE TOSSICO.",
+        description = "Brilliant orange-red rubrication color with strong impact, but lead-based and hazardous.",
     },
     
     VERMIGLIONE = {
-        name = "Vermiglione",
+        name = "Vermilion / Cinnabar",
         name_en = "Vermilion / Cinnabar",
         color = {200, 40, 40},
         tier = 4,
-        toxicity = 3,  -- Tossico (mercurio)
+        toxicity = 3,  -- Toxic (mercury)
         cost = 45,
-        origin = "mineral_artificial",  -- Solfuro di mercurio
-        preparation = "Macinazione e miscelazione con acqua e legante.",
+        origin = "mineral_artificial",  -- Mercury sulfide
+        preparation = "Grind cinnabar or synthetic vermilion gently and avoid contamination from alkali residues.",
         folio_use = {
-            text = true,       -- Red text attestato
+            text = true,       -- Red text attested
             dropcaps = nil,
             borders = false,
             corners = false,
             miniature = true,  -- Angel's robes
         },
         effects = {
-            vibrant = true,  -- Rosso molto intenso
-            degradation_risk = true,  -- Può scolorire
+            vibrant = true,  -- Very intense red
+            degradation_risk = true,  -- Can discolor
         },
-        description = "Rosso brillante da cinabro. Può degradare. TOSSICO (mercurio).",
+        description = "Intense scarlet prized for focal details, ceremonial garments, and high-contrast accents.",
     },
     
     REALGAR = {
@@ -126,10 +126,10 @@ Pigments.data = {
         name_en = "Realgar",
         color = {220, 100, 40},
         tier = 6,
-        toxicity = 3,  -- "Altamente pericoloso" (arsenico)
+        toxicity = 3,  -- "Highly dangerous" (arsenic)
         cost = 60,
-        origin = "mineral",  -- Solfuro di arsenico
-        preparation = "Minerale da frantumare.",
+        origin = "mineral",  -- Arsenic sulfide
+        preparation = "Select bright orange crystals, grind under controlled conditions, and store away from light.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -138,21 +138,21 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {
-            risk_reward = true,  -- 1-2 = doppia macchia, 5-6 = doppio slot
+            risk_reward = true,  -- 1-2 = double stain, 5-6 = double slot
             rare = true,  -- "Not widely used"
         },
-        description = "Arancio arsenicale. Cennini sconsiglia il contatto. ALTAMENTE TOSSICO.",
+        description = "Rare arsenic orange with dramatic chroma, used sparingly because of instability and danger.",
     },
     
     KERMES = {
-        name = "Kermes",
+        name = "Kermes / Carmine",
         name_en = "Kermes / Carmine",
         color = {180, 30, 50},
         tier = 5,
         toxicity = 0,  -- Lac e cochineal "perfectly safe"
         cost = 70,
         origin = "organic_insect",  -- Kermes vermilio
-        preparation = "Insetti raccolti, essiccati e pestati; precipitazione per lacca.",
+        preparation = "Steep dried kermes insects, precipitate the dye onto a substrate, then dry into a usable lake.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -163,18 +163,18 @@ Pigments.data = {
         effects = {
             precious_red = true,
         },
-        description = "Rosso pregiato da insetti. Include lac e cocciniglia come varianti.",
+        description = "Luxurious insect crimson associated with prestige manuscripts and costly commissions.",
     },
     
     BRAZILWOOD = {
-        name = "Legno del Brasile",
+        name = "Brazilwood / Sappanwood",
         name_en = "Brazilwood / Sappanwood",
         color = {150, 40, 50},
         tier = 3,
         toxicity = 0,
         cost = 18,
         origin = "organic_plant",  -- Caesalpinia sappan
-        preparation = "Ricetta con liscivia, allume e filtraggi.",
+        preparation = "Boil chipped wood to extract dye, concentrate the liquor, and precipitate a workable lake.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -183,111 +183,111 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {},
-        description = "Pigmento rosso da legno importato dall'Oriente.",
+        description = "Warm red lake with good tinting value, often used for decorative passages.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- GIALLI
+    -- YELLOWS
     -- ══════════════════════════════════════════════════════════════
     
     OCRA_GIALLA = {
-        name = "Ocra Gialla",
+        name = "Yellow Ochre",
         name_en = "Yellow Ochre",
         color = {200, 160, 60},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "mineral",  -- Terra naturale
-        preparation = "Lavaggio e macinazione della terra/roccia colorata.",
+        origin = "mineral",  -- Natural earth
+        preparation = "Levigate yellow earth repeatedly to separate clean iron-rich particles from clay and grit.",
         folio_use = {
             text = nil,
-            dropcaps = true,  -- (capitali)
+            dropcaps = true,  -- Capitals
             borders = false,
             corners = false,
             miniature = nil,
         },
         effects = {},
-        description = "Terra naturale, colore caldo e stabile per lettere capitali.",
+        description = "Durable earth yellow, dependable for initials, flesh mixtures, and warm highlights.",
     },
     
     ORPIMENTO = {
-        name = "Orpimento",
+        name = "Orpiment / Auripigmentum",
         name_en = "Orpiment / Auripigmentum",
         color = {240, 200, 50},
         tier = 6,
-        toxicity = 3,  -- Esplicitamente tossico (arsenico)
+        toxicity = 3,  -- Explicitly toxic (arsenic)
         cost = 55,
-        origin = "mineral",  -- Solfuro di arsenico As2S3
-        preparation = "Minerale da frantumare/macinare.",
+        origin = "mineral",  -- Arsenic sulfide As2S3
+        preparation = "Grind arsenic sulfide with strict dust precautions and isolate tools used for toxic pigments.",
         folio_use = {
             text = nil,
-            dropcaps = true,  -- Monogrammi
+            dropcaps = true,  -- Monograms
             borders = false,
             corners = false,
-            miniature = true,  -- Identificato in immagini
+            miniature = true,  -- Identified in illustrations
         },
         effects = {
-            gold_substitute = true,  -- Chiamato "auripigmentum" (simile all'oro)
+            gold_substitute = true,  -- Called "auripigmentum" (similar to gold)
             risk_reward = true,
         },
-        description = "Giallo dorato brillante. Pericoloso anche nel medioevo. ARSENICO.",
+        description = "Luminous arsenic yellow that can rival gold in brilliance but carries serious toxicity.",
     },
     
     GIALLORINO = {
-        name = "Giallorino",
+        name = "Lead-Tin Yellow",
         name_en = "Lead-Tin Yellow",
         color = {240, 210, 80},
         tier = 4,
-        toxicity = 3,  -- Tossico (piombo)
+        toxicity = 3,  -- Toxic (lead)
         cost = 35,
-        origin = "artificial",  -- Piombo + stagno
-        preparation = "Riscaldando piombo e stagno.",
+        origin = "artificial",  -- Lead + tin
+        preparation = "Prepare from calcined lead-tin oxide powder and mull to a smooth opaque paint.",
         folio_use = {
             text = false,
             dropcaps = nil,
-            borders = true,   -- Fogliame
+            borders = true,   -- Foliage
             corners = true,   -- Top-left decorations
             miniature = nil,
         },
         effects = {
             border_bonus = 1,  -- +1 slot su BORDERS
         },
-        description = "Giallo artificiale per fogliame e decorazioni. TOSSICO (piombo).",
+        description = "Opaque historical yellow excellent for foliage, ornaments, and layered highlights.",
     },
     
     ORO_MUSIVO = {
-        name = "Oro Musivo",
+        name = "Mosaic Gold / Purpurino",
         name_en = "Mosaic Gold / Purpurino",
         color = {255, 190, 60},
         tier = 6,
-        toxicity = 3,  -- Tossico (mercurio)
+        toxicity = 3,  -- Toxic (mercury)
         cost = 65,
         origin = "artificial",  -- Sal ammoniac, mercurio, stagno, zolfo
-        preparation = "Processo sintetico a base di calore.",
+        preparation = "Synthesize and wash the powder repeatedly, then bind it as a metallic yellow highlight.",
         folio_use = {
             text = false,
             dropcaps = nil,
             borders = nil,
             corners = nil,
-            miniature = true,  -- Capelli biondi su sfondo oro
+            miniature = true,  -- Blond hair on gold background
         },
         effects = {
             gold_compatible = true,  -- Si abbina alla foglia d'oro
             hair_highlight = true,
         },
-        description = "Giallo brillante per dettagli su sfondo oro. TOSSICO (mercurio).",
+        description = "Artificial metallic yellow used to simulate gold effects in miniature details.",
     },
     
-    -- Gialli vegetali
+    -- Plant-based yellows
     RESEDA = {
-        name = "Reseda",
+        name = "Weld",
         name_en = "Weld",
         color = {200, 190, 80},
         tier = 2,
         toxicity = 0,
         cost = 5,
         origin = "organic_plant",
-        preparation = "Estrazione da pianta.",
+        preparation = "Simmer weld stems and flowers, then fix the extracted dye on alumina for better body.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -296,20 +296,20 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {
-            fugitive = true,  -- Poco lightfast
+            fugitive = true,  -- Poor lightfastness
         },
-        description = "Giallo vegetale brillante. Tende a sbiadire nel tempo.",
+        description = "Clear plant yellow, bright but fugitive unless protected from strong light.",
     },
     
     CURCUMA = {
-        name = "Curcuma",
+        name = "Turmeric",
         name_en = "Turmeric",
         color = {220, 180, 50},
         tier = 2,
         toxicity = 0,
         cost = 8,
         origin = "organic_plant",
-        preparation = "Radice essiccata e macinata.",
+        preparation = "Extract color from dried turmeric rhizome and prepare in small fresh batches.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -320,18 +320,18 @@ Pigments.data = {
         effects = {
             fugitive = true,
         },
-        description = "Giallo speziato. Come altri gialli vegetali, poco stabile alla luce.",
+        description = "Accessible organic yellow with vivid tone and limited permanence.",
     },
     
     ZAFFERANO = {
-        name = "Zafferano",
+        name = "Saffron",
         name_en = "Saffron",
         color = {255, 180, 40},
         tier = 2,
         toxicity = 0,
-        cost = 40,  -- Molto costoso
+        cost = 40,  -- Very expensive
         origin = "organic_plant",
-        preparation = "Stigmi essiccati.",
+        preparation = "Infuse saffron threads in warm water or glair to obtain a luminous transparent yellow.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -343,18 +343,18 @@ Pigments.data = {
             precious = true,
             fugitive = true,
         },
-        description = "Giallo prezioso da fiori. Costoso e fugace.",
+        description = "Prestige yellow glaze valued for warmth, transparency, and symbolic richness.",
     },
     
     CAMOMILLA = {
-        name = "Camomilla",
+        name = "Chamomile",
         name_en = "Chamomile",
         color = {210, 190, 90},
         tier = 2,
         toxicity = 0,
         cost = 3,
         origin = "organic_plant",
-        preparation = "Fiori essiccati.",
+        preparation = "Steep chamomile flower heads for a soft yellow extract, often reinforced with a mordant.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -365,34 +365,34 @@ Pigments.data = {
         effects = {
             fugitive = true,
         },
-        description = "Giallo tenue da fiori. Economico ma fugace.",
+        description = "Gentle botanical yellow suited to subtle highlights and delicate mixtures.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- VERDI
+    -- GREENS
     -- ══════════════════════════════════════════════════════════════
     
     VERDERAME = {
-        name = "Verderame",
+        name = "Verdigris",
         name_en = "Verdigris",
         color = {80, 160, 120},
         tier = 2,
-        toxicity = 1,  -- Rischi pratici, non particolarmente pericoloso
+        toxicity = 1,  -- Practical handling risks, not especially dangerous
         cost = 10,
-        origin = "artificial",  -- Rame(II) acetato
-        preparation = "Patina verde del rame, o rame + aceto.",
+        origin = "artificial",  -- Copper(II) acetate
+        preparation = "Grow copper acetate crystals with vinegar vapors, then wash and grind before use.",
         folio_use = {
             text = nil,
-            dropcaps = true,  -- Iniziali A e T nel Lindisfarne
+            dropcaps = true,  -- A and T initials in Lindisfarne
             borders = nil,
             corners = nil,
-            miniature = true,  -- Il mare nell'Abingdon Apocalypse
+            miniature = true,  -- The sea in the Abingdon Apocalypse
         },
         effects = {
-            corrosive = true,  -- Può danneggiare la pergamena
+            corrosive = true,  -- Can damage parchment
             on_1 = "extra_stain",
         },
-        description = "Verde rame brillante. L'acido acetico può irritare. Corrosivo.",
+        description = "Powerful copper green with striking saturation, but chemically reactive over time.",
     },
     
     VERGAUT = {
@@ -400,10 +400,10 @@ Pigments.data = {
         name_en = "Vergaut",
         color = {120, 150, 80},
         tier = 3,
-        toxicity = 3,  -- Contiene orpimento (arsenico)
+        toxicity = 3,  -- Contains orpiment (arsenic)
         cost = 30,
-        origin = "mixture",  -- Orpimento + guado
-        preparation = "Miscela di orpimento e guado.",
+        origin = "mixture",  -- Orpiment + woad
+        preparation = "Blend a blue base with a yellow lake to obtain the characteristic mixed manuscript green.",
         folio_use = {
             text = false,
             dropcaps = true,  -- Colored initials
@@ -414,7 +414,7 @@ Pigments.data = {
         effects = {
             mixed = true,
         },
-        description = "Verde da miscela. Contiene orpimento: TOSSICO (arsenico).",
+        description = "Classic mixed green balancing blue depth with yellow brightness.",
     },
     
     MALACHITE = {
@@ -422,10 +422,10 @@ Pigments.data = {
         name_en = "Malachite",
         color = {60, 140, 90},
         tier = 5,
-        toxicity = 1,  -- "Mildly toxic" (rame)
+        toxicity = 1,  -- "Mildly toxic" (copper)
         cost = 50,
-        origin = "mineral",  -- Carbonato di rame
-        preparation = "Macinazione, purificazione con liscivia e decantazioni.",
+        origin = "mineral",  -- Copper carbonate
+        preparation = "Crush and grade malachite by particle size to control hue from pale to deep green.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -436,22 +436,22 @@ Pigments.data = {
         effects = {
             stable_green = true,
         },
-        description = "Verde minerale naturale. Lievemente tossico per il rame.",
+        description = "Granular mineral green giving textured natural passages in foliage and drapery.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- BLU
+    -- BLUES
     -- ══════════════════════════════════════════════════════════════
     
     GUADO = {
-        name = "Guado",
+        name = "Woad / Indigo",
         name_en = "Woad / Indigo",
         color = {60, 80, 140},
         tier = 2,
         toxicity = 0,
         cost = 8,
         origin = "organic_plant",  -- Isatis tinctoria
-        preparation = "Foglie in acqua calda, aerazione, allume per depositare.",
+        preparation = "Ferment and oxidize woad extract, then dry cakes and regrind for painting use.",
         folio_use = {
             text = nil,
             dropcaps = true,  -- Monogramma INI
@@ -460,41 +460,41 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {},
-        description = "Blu vegetale europeo. Alternativa economica all'indaco.",
+        description = "Historic vat blue, softer than ultramarine but practical and widely obtainable.",
     },
     
     LAPISLAZZULI = {
-        name = "Lapislazzuli",
+        name = "Ultramarine / Lapis Lazuli",
         name_en = "Ultramarine / Lapis Lazuli",
         color = {40, 60, 170},
         tier = 5,
-        toxicity = 0,  -- Pigmento non tossico
+        toxicity = 0,  -- Non-toxic pigment
         cost = 100,
-        origin = "mineral",  -- Roccia metamorfica da Badakhshan
-        preparation = "Macinazione, pastiglia con gomma e cera, estrazioni in liscivia.",
+        origin = "mineral",  -- Metamorphic rock from Badakhshan
+        preparation = "Separate lazurite from gangue by repeated grinding and wax-lye kneading cycles.",
         folio_use = {
             text = false,
             dropcaps = true,  -- Decorated initial Z
             borders = nil,
             corners = nil,
-            miniature = true,  -- Manto della Vergine Maria
+            miniature = true,  -- Virgin Mary's mantle
         },
         effects = {
-            golden_bonus = true,  -- 6 riempie 3 slot invece di 2
-            virgin_mary = true,  -- Uso iconografico
+            golden_bonus = true,  -- 6 fills 3 slots instead of 2
+            virgin_mary = true,  -- Iconographic use
         },
-        description = "Il blu più prezioso, dall'Afghanistan. Per la Vergine Maria.",
+        description = "Premium ultramarine source, exceptionally vivid and reserved for high-status work.",
     },
     
     AZZURRITE = {
-        name = "Azzurrite",
+        name = "Azurite",
         name_en = "Azurite",
         color = {50, 100, 180},
         tier = 3,
         toxicity = 2,  -- "Moderately toxic"
         cost = 35,
-        origin = "mineral",  -- Minerale a base di rame
-        preparation = "Macinazione, lavaggi/decantazioni con liscivia.",
+        origin = "mineral",  -- Copper-based mineral
+        preparation = "Levigate azurite and classify grains; coarser fractions produce deeper darker blues.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -505,45 +505,45 @@ Pigments.data = {
         effects = {
             lapis_alternative = true,
         },
-        description = "Blu minerale, più economico del lapislazzuli. Moderatamente tossico.",
+        description = "Strong mineral blue and common ultramarine alternative in medieval workshops.",
     },
     
     BLU_EGIZIO = {
-        name = "Blu Egizio",
+        name = "Egyptian Blue",
         name_en = "Egyptian Blue",
         color = {30, 90, 160},
         tier = 6,
         toxicity = 0,
         cost = 80,
-        origin = "artificial_ancient",  -- Pigmento artificiale antico
-        preparation = "Non prodotto nel medioevo, riutilizzato in casi isolati.",
+        origin = "artificial_ancient",  -- Ancient synthetic pigment
+        preparation = "Use pre-fritted synthetic blue, grind finely, and disperse in a compatible binder.",
         folio_use = {
             text = false,
             dropcaps = false,
             borders = false,
             corners = false,
-            miniature = true,  -- Veste di Hrabanus Maurus
+            miniature = true,  -- Robe of Hrabanus Maurus
         },
         effects = {
             ancient = true,
             rare = true,
         },
-        description = "Pigmento antico, raramente trovato in manoscritti medievali.",
+        description = "Ancient synthetic blue with a distinctive cool tone and rare manuscript attestations.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- PORPORA E VIOLA
+    -- PURPLES AND VIOLETS
     -- ══════════════════════════════════════════════════════════════
     
     PORPORA_TIRO = {
-        name = "Porpora di Tiro",
+        name = "Tyrian Purple",
         name_en = "Tyrian Purple",
         color = {130, 40, 100},
         tier = 7,
-        toxicity = 0,  -- "Not toxic" (lumache commestibili)
+        toxicity = 0,  -- "Not toxic" (edible snails)
         cost = 200,
-        origin = "organic_animal",  -- Molluschi murex
-        preparation = "Ghiandola ipobranchiale, bollitura prolungata.",
+        origin = "organic_animal",  -- Murex mollusks
+        preparation = "Process murex-derived dye compounds and fix the color on a stable substrate.",
         folio_use = {
             text = nil,
             dropcaps = nil,
@@ -553,20 +553,20 @@ Pigments.data = {
         },
         effects = {
             imperial = true,
-            legendary = true,  -- Raramente identificata
+            legendary = true,  -- Rarely identified
         },
-        description = "Il colore degli imperatori. Mai identificato con certezza in MSS occidentali.",
+        description = "Legendary imperial purple, symbol of rank and exceptional expense.",
     },
     
     ORCHIL = {
-        name = "Orchil",
+        name = "Orchil / Orcein",
         name_en = "Orchil / Orcein",
         color = {140, 60, 110},
         tier = 4,
         toxicity = 0,  -- "Not toxic"
         cost = 30,
-        origin = "organic_lichen",  -- Lichene (orcinol)
-        preparation = "Essiccazione, macinazione, fermentazione in ammoniaca/urina.",
+        origin = "organic_lichen",  -- Lichen (orcinol)
+        preparation = "Ferment lichen material in alkaline solution, then age until violet tones fully develop.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -575,20 +575,20 @@ Pigments.data = {
             miniature = true,  -- Eagle's head in CCCC MS 197B
         },
         effects = {
-            parchment_dye = true,  -- Usato per tingere pagine
+            parchment_dye = true,  -- Used to dye pages
         },
-        description = "Viola da lichene. Usato per tingere pergamene intere.",
+        description = "Lichen violet used for purple accents and occasional parchment tinting.",
     },
     
     FOLIUM = {
-        name = "Folium",
+        name = "Turnsole / Folium",
         name_en = "Turnsole / Folium",
         color = {150, 70, 130},
         tier = 3,
         toxicity = 0,
         cost = 25,
         origin = "organic_plant",  -- Chrozophora tinctoria
-        preparation = "Schiacciatura frutti, dye assorbito in clothlets.",
+        preparation = "Press turnsole fruit to collect sap and dry it onto cloth cakes for later rewetting.",
         folio_use = {
             text = false,
             dropcaps = true,  -- Penflourishing around initials
@@ -597,99 +597,99 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {
-            penflourish = true,  -- Usato per svolazzi decorativi
+            penflourish = true,  -- Used for decorative flourishes
         },
-        description = "Viola per penflourishing attorno alle iniziali. Clothlets trasportabili.",
+        description = "Plant violet-blue colorant known for pen flourishes and decorative line work.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- MARRONI
+    -- BROWNS
     -- ══════════════════════════════════════════════════════════════
     
     OCRA_BRUNA = {
-        name = "Ocra Bruna",
+        name = "Brown Ochre",
         name_en = "Brown Ochre",
         color = {140, 90, 50},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "mineral",  -- Terra
-        preparation = "Macinazione.",
+        origin = "mineral",  -- Earth
+        preparation = "Wash and levigate brown earth, retaining the mid-weight fraction for stable color.",
         folio_use = {
             text = false,
             dropcaps = nil,
             borders = nil,
             corners = nil,
-            miniature = true,  -- Wildlife e hunting scenes
+            miniature = true,  -- Wildlife and hunting scenes
         },
         effects = {
-            late_medieval = true,  -- Più usato nel tardo medioevo
+            late_medieval = true,  -- More used in the late Middle Ages
         },
-        description = "Marrone terrestre. Comune in scene di caccia nei Books of Hours.",
+        description = "Stable earth brown for shadows, outlines, and naturalistic scenes.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- NERI
+    -- BLACKS
     -- ══════════════════════════════════════════════════════════════
     
     NERO_CARBONIOSO = {
-        name = "Nero Carbonioso",
+        name = "Carbon Ink / Soot Ink",
         name_en = "Carbon Ink / Soot Ink",
         color = {30, 30, 35},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "organic",  -- Fuliggine
-        preparation = "Raccolta fuliggine, macinazione con acqua e gomma arabica.",
+        origin = "organic",  -- Soot
+        preparation = "Collect soot, wash impurities, and disperse the carbon with a gum-based binder.",
         folio_use = {
-            text = true,  -- Usato per appunti
+            text = true,  -- Used for notes
             dropcaps = nil,
             borders = false,
             corners = false,
             miniature = true,  -- Black paints
         },
         effects = {
-            erasable = true,  -- Più facile da sbavare/raschiare
+            erasable = true,  -- Easier to smudge/scrape
         },
-        description = "Nero da fuliggine. Facile da produrre, meno permanente.",
+        description = "Dense black with good covering power, easy to handle and comparatively safe.",
     },
     
     NERO_FERROGALLICO = {
-        name = "Nero Ferrogallico",
+        name = "Iron Gall Ink",
         name_en = "Iron Gall Ink",
         color = {25, 20, 30},
         tier = 1,
-        toxicity = 1,  -- Può corrodere il supporto
+        toxicity = 1,  -- Can corrode the support
         cost = 5,
-        origin = "chemical",  -- Galle + vitriolo + gomma
-        preparation = "Galle da quercia + copperas (solfato ferroso) + gomma.",
+        origin = "chemical",  -- Galls + vitriol + gum
+        preparation = "Macerate oak galls, add vitriol solution, then stabilize the ink with gum arabic.",
         folio_use = {
-            text = true,  -- Per testi 'proper'
+            text = true,  -- For formal text
             dropcaps = nil,
             borders = false,
             corners = false,
             miniature = true,  -- Black paints
         },
         effects = {
-            permanent = true,  -- Molto permanente
-            corrosive = true,  -- Può danneggiare la pergamena
+            permanent = true,  -- Very permanent
+            corrosive = true,  -- Can damage parchment
         },
-        description = "Inchiostro permanente per testi ufficiali. Può corrodere se troppo ferrico.",
+        description = "Standard writing black with excellent permanence, though potentially corrosive.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- BIANCHI
+    -- WHITES
     -- ══════════════════════════════════════════════════════════════
     
     CRETA = {
-        name = "Creta",
+        name = "Chalk",
         name_en = "Chalk",
         color = {240, 235, 220},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "mineral",  -- Calcio
-        preparation = "Macinazione.",
+        origin = "mineral",  -- Calcium
+        preparation = "Grind soft chalk and sieve to a fine even powder before mixing with binder.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -698,18 +698,18 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {},
-        description = "Bianco naturale da gesso/creta.",
+        description = "Matte white extender used for lightening, body, and preparatory passages.",
     },
     
     GESSO = {
-        name = "Gesso",
+        name = "Gypsum",
         name_en = "Gypsum",
         color = {245, 240, 230},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "mineral",  -- Solfato di calcio
-        preparation = "Macinazione.",
+        origin = "mineral",  -- Calcium sulfate
+        preparation = "Calcine or grind gypsum, then levigate to produce a clean fine white mineral.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -718,20 +718,20 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {
-            ground = true,  -- Usato come fondo per doratura
+            ground = true,  -- Used as gilding ground
         },
-        description = "Bianco per fondi e lumeggiature, base per doratura.",
+        description = "Utility white mineral for grounds, fillers, and gesso-related preparation work.",
     },
     
     GUSCIO_UOVO = {
-        name = "Guscio d'Uovo",
+        name = "Eggshell White",
         name_en = "Eggshell White",
         color = {250, 245, 235},
         tier = 1,
         toxicity = 0,
         cost = 0,
-        origin = "organic",  -- Gusci d'uovo macinati
-        preparation = "Macinazione fine dei gusci.",
+        origin = "organic",  -- Ground eggshells
+        preparation = "Clean eggshells, remove membranes, then grind and wash to a smooth white powder.",
         folio_use = {
             text = false,
             dropcaps = nil,
@@ -740,68 +740,68 @@ Pigments.data = {
             miniature = nil,
         },
         effects = {},
-        description = "Bianco delicato da gusci d'uovo macinati.",
+        description = "Fine calcium white from workshop waste, useful for subtle highlights.",
     },
     
     BIANCO_PIOMBO = {
-        name = "Bianco di Piombo",
+        name = "Lead White / Cerussa",
         name_en = "Lead White / Cerussa",
         color = {250, 248, 245},
         tier = 7,
         toxicity = 3,  -- "Deadly poison" (Plinio, Vitruvio)
         cost = 40,
         origin = "artificial",  -- Piombo
-        preparation = "Piombo esposto all'aceto, raschiatura della crosta, riscaldamento.",
+        preparation = "Produce basic lead carbonate by corrosion process, then wash and mill with care.",
         folio_use = {
             text = false,
             dropcaps = false,
             borders = false,
             corners = false,
-            miniature = true,  -- Incarnati, highlighter
+            miniature = true,  -- Flesh tones, highlights
         },
         effects = {
-            highlight = true,  -- Linee bianche per aumentare gamma tonale
-            flesh_base = true, -- Base per incarnati
+            highlight = true,  -- White lines to extend tonal range
+            flesh_base = true, -- Base for flesh tones
         },
-        description = "Bianco coprente per incarnati e lumeggiature. VELENO MORTALE.",
+        description = "Powerful opaque white for flesh and highlights, effective but highly toxic.",
     },
 
     -- ══════════════════════════════════════════════════════════════
-    -- METALLI
+    -- METALS
     -- ══════════════════════════════════════════════════════════════
     
     ORO_FOGLIA = {
-        name = "Foglia d'Oro",
+        name = "Gold Leaf",
         name_en = "Gold Leaf",
         color = {255, 200, 50},
         tier = 5,
         toxicity = 0,
         cost = 80,
-        origin = "metal",  -- Oro battuto
-        preparation = "Martellatura fino a 0.001 mm; applicazione su gum/glair tacky.",
+        origin = "metal",  -- Beaten gold
+        preparation = "Apply bole or gesso mordant, lay leaf with a tip, then burnish after proper setting.",
         folio_use = {
             text = false,
-            dropcaps = true,  -- Iniziali dorate
-            borders = true,   -- Bordi dorati
-            corners = true,   -- Angoli
-            miniature = true, -- Sfondi divini
+            dropcaps = true,  -- Gilded initials
+            borders = true,   -- Gilded borders
+            corners = true,   -- Corners
+            miniature = true, -- Divine backgrounds
         },
         effects = {
             burnishable = true,
             on_6 = "remove_2_stain",
         },
-        description = "Lamina sottilissima per lumeggiature divine. Richiede brunitura.",
+        description = "True metallic gold with unmatched reflectivity for initials, borders, and sacred halos.",
     },
     
     ORO_POLVERE = {
-        name = "Oro in Polvere",
+        name = "Shell Gold",
         name_en = "Shell Gold",
         color = {255, 190, 40},
         tier = 5,
         toxicity = 0,
         cost = 90,
-        origin = "metal",  -- Oro macinato
-        preparation = "Oro in polvere conservato in conchiglie, miscelato con miele o gomma.",
+        origin = "metal",  -- Ground gold
+        preparation = "Grind gold leaf with honey or gum, wash out additives, and store as shell-gold paint.",
         folio_use = {
             text = false,
             dropcaps = true,
@@ -810,39 +810,39 @@ Pigments.data = {
             miniature = true,
         },
         effects = {
-            paint_like = true,  -- Si applica come pittura
+            paint_like = true,  -- Applied like paint
         },
-        description = "Oro in polvere in conchiglie. Più facile da applicare della foglia.",
+        description = "Powdered gold paint for controlled brushwork where leaf application is impractical.",
     },
     
     ARGENTO_FOGLIA = {
-        name = "Foglia d'Argento",
+        name = "Silver Leaf",
         name_en = "Silver Leaf",
         color = {200, 200, 210},
         tier = 5,
         toxicity = 0,
         cost = 50,
         origin = "metal",
-        preparation = "Come foglia d'oro.",
+        preparation = "Lay silver leaf on prepared mordant and seal it to slow oxidation and darkening.",
         folio_use = {
             text = false,
             dropcaps = true,
             borders = true,
             corners = true,
-            miniature = true,  -- Elmi, spade
+            miniature = true,  -- Helmets, swords
         },
         effects = {
-            tarnish_risk = true,  -- Tende a ossidarsi e scurire
+            tarnish_risk = true,  -- Tends to oxidize and darken
         },
-        description = "Per armature e dettagli metallici. Tende a scurire nel tempo.",
+        description = "Bright metallic silver for armor and ornament, vulnerable to tarnish if left unsealed.",
     },
 }
 
 -- ══════════════════════════════════════════════════════════════════
--- FUNZIONI
+-- FUNCTIONS
 -- ══════════════════════════════════════════════════════════════════
 
---- Ottiene pigmenti per tier
+--- Gets pigments by tier
 function Pigments.getByTier(tier)
     local result = {}
     local tier_names = Pigments.TIERS[tier] or {}
@@ -854,7 +854,7 @@ function Pigments.getByTier(tier)
     return result
 end
 
---- Ottiene pigmenti sbloccati fino a un certo tier
+--- Gets pigments unlocked up to a given tier
 function Pigments.getUnlockedUpTo(max_tier)
     local result = {}
     for tier = 1, max_tier do
@@ -865,12 +865,12 @@ function Pigments.getUnlockedUpTo(max_tier)
     return result
 end
 
---- Ottiene un pigmento per nome
+--- Gets a pigment by name
 function Pigments.get(name)
     return Pigments.data[name]
 end
 
---- Ottiene pigmenti per livello di tossicità
+--- Gets pigments by toxicity level
 function Pigments.getByToxicity(level)
     local result = {}
     for name, data in pairs(Pigments.data) do
@@ -881,12 +881,12 @@ function Pigments.getByToxicity(level)
     return result
 end
 
---- Ottiene pigmenti sicuri (toxicity = 0)
+--- Gets safe pigments (toxicity = 0)
 function Pigments.getSafe()
     return Pigments.getByToxicity(0)
 end
 
---- Ottiene pigmenti che possono essere usati per una parte del folio
+--- Gets pigments usable for a folio element
 function Pigments.getForFolioElement(element)
     -- element: "text", "dropcaps", "borders", "corners", "miniature"
     local result = {}
@@ -898,7 +898,7 @@ function Pigments.getForFolioElement(element)
     return result
 end
 
---- Conta pigmenti totali
+--- Counts total pigments
 function Pigments.count()
     local n = 0
     for _ in pairs(Pigments.data) do

@@ -83,7 +83,7 @@ function FolioDisplay.drawStainMeter(folio, x, y, w, h)
     -- Testo
     love.graphics.setColor(COLORS.parchment)
     love.graphics.printf(
-        string.format("Macchia: %d/%d", folio.stain_count, folio.stain_threshold),
+        string.format("Stain: %d/%d", folio.stain_count, folio.stain_threshold),
         x, y + 3, w, "center"
     )
 end

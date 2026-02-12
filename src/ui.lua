@@ -1,7 +1,22 @@
 -- src/ui.lua
 -- Componenti UI consolidati per Scriptorium Alchimico
 
+local RuntimeUI = require("src.core.runtime_ui")
+
 local UI = {}
+
+local font_cache = {}
+
+local function get_font(px)
+    local size = RuntimeUI.sized(px)
+    if not font_cache[size] then
+        local ok, font = pcall(function()
+            return love.graphics.newFont(size)
+        end)
+        font_cache[size] = ok and font or love.graphics.getFont()
+    end
+    return font_cache[size]
+end
 
 -- ══════════════════════════════════════════════════════════════════
 -- COLORI CONDIVISI
@@ -53,21 +68,26 @@ local ELEMENT_ICONS = {
 function UI.drawRunHUD(run, x, y)
     if not run then return end
     
+    local high_contrast = RuntimeUI.high_contrast()
+    local previous_font = love.graphics.getFont()
+    local hud_font = get_font(16)
+    love.graphics.setFont(hud_font)
+
     local status = run:getStatus()
-    local padding = 10
-    local line_height = 22
-    local w = 180
+    local padding = RuntimeUI.sized(10)
+    local line_height = RuntimeUI.sized(22)
+    local w = RuntimeUI.sized(196)
     local h = padding * 2 + line_height * 4
     
     -- Background
-    love.graphics.setColor(UI.COLORS.panel)
+    love.graphics.setColor(UI.COLORS.panel[1], UI.COLORS.panel[2], UI.COLORS.panel[3], high_contrast and 0.95 or UI.COLORS.panel[4])
     love.graphics.rectangle("fill", x, y, w, h, 6, 6)
     
     local text_x = x + padding
     local text_y = y + padding
     
     -- Fascicolo
-    love.graphics.setColor(UI.COLORS.text_light)
+    love.graphics.setColor(high_contrast and 1.0 or UI.COLORS.text_light[1], high_contrast and 0.96 or UI.COLORS.text_light[2], high_contrast and 0.88 or UI.COLORS.text_light[3], 1)
     love.graphics.print(status.fascicolo, text_x, text_y)
     text_y = text_y + line_height
     
@@ -76,33 +96,39 @@ function UI.drawRunHUD(run, x, y)
     love.graphics.print("Folio: " .. status.folio, text_x, text_y)
     text_y = text_y + line_height
     
-    -- Reputazione
+    -- Reputation
     love.graphics.setColor(UI.COLORS.reputation)
     love.graphics.print("♥ " .. status.reputation, text_x, text_y)
     
     -- Coins
     love.graphics.setColor(UI.COLORS.gold)
-    love.graphics.print("⚜ " .. status.coins, text_x + 70, text_y)
+    love.graphics.print("⚜ " .. status.coins, text_x + RuntimeUI.sized(74), text_y)
+    love.graphics.setFont(previous_font)
 end
 
 --- Disegna messaggio centrale (es. "BUST!", "COMPLETATO!")
 function UI.drawCenterMessage(message, subtext)
     local w = love.graphics.getWidth()
     local h = love.graphics.getHeight()
+    local high_contrast = RuntimeUI.high_contrast()
+    local previous_font = love.graphics.getFont()
     
     -- Overlay scuro
-    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.setColor(0, 0, 0, high_contrast and 0.80 or 0.70)
     love.graphics.rectangle("fill", 0, 0, w, h)
     
     -- Messaggio principale
+    love.graphics.setFont(get_font(48))
     love.graphics.setColor(UI.COLORS.gold)
-    love.graphics.printf(message, 0, h/2 - 40, w, "center")
+    love.graphics.printf(message, 0, h / 2 - RuntimeUI.sized(54), w, "center")
     
     -- Sottotesto
     if subtext then
-        love.graphics.setColor(UI.COLORS.text_light)
-        love.graphics.printf(subtext, 0, h/2 + 10, w, "center")
+        love.graphics.setFont(get_font(24))
+        love.graphics.setColor(high_contrast and 1.0 or UI.COLORS.text_light[1], high_contrast and 0.96 or UI.COLORS.text_light[2], high_contrast and 0.88 or UI.COLORS.text_light[3], 1)
+        love.graphics.printf(subtext, 0, h / 2 + RuntimeUI.sized(12), w, "center")
     end
+    love.graphics.setFont(previous_font)
 end
 
 -- ══════════════════════════════════════════════════════════════════
@@ -117,40 +143,49 @@ end
 ---@param h number Altezza
 function UI.drawFolio(folio, x, y, w, h)
     if not folio then return end
+    local high_contrast = RuntimeUI.high_contrast()
+    local previous_font = love.graphics.getFont()
     
-    local padding = 10
-    local element_height = 40
+    local padding = RuntimeUI.sized(10)
+    local element_height = RuntimeUI.sized(40)
+    love.graphics.setFont(get_font(16))
     
     -- Background pannello
-    love.graphics.setColor(UI.COLORS.background)
+    love.graphics.setColor(UI.COLORS.background[1], UI.COLORS.background[2], UI.COLORS.background[3], high_contrast and 0.96 or UI.COLORS.background[4])
     love.graphics.rectangle("fill", x, y, w, h, 8, 8)
     
     -- Titolo
-    love.graphics.setColor(UI.COLORS.parchment)
+    love.graphics.setFont(get_font(20))
+    love.graphics.setColor(high_contrast and 1.0 or UI.COLORS.parchment[1], high_contrast and 0.95 or UI.COLORS.parchment[2], high_contrast and 0.85 or UI.COLORS.parchment[3], 1)
     love.graphics.printf("FOLIO", x, y + padding, w, "center")
     
     -- Indicatore macchie
-    local stain_y = y + padding + 25
-    UI.drawStainMeter(folio, x + padding, stain_y, w - padding*2, 20)
+    local stain_y = y + padding + RuntimeUI.sized(28)
+    UI.drawStainMeter(folio, x + padding, stain_y, w - padding * 2, RuntimeUI.sized(20))
     
     -- Checklist elementi
-    local list_y = stain_y + 35
+    local list_y = stain_y + RuntimeUI.sized(35)
     for i, elem_name in ipairs(folio.ELEMENTS) do
         local elem = folio.elements[elem_name]
-        UI.drawElement(elem_name, elem, x + padding, list_y, w - padding*2, element_height)
+        UI.drawElement(elem_name, elem, x + padding, list_y, w - padding * 2, element_height)
         list_y = list_y + element_height + 5
     end
     
     -- Shield indicator
     if folio.shield > 0 then
+        love.graphics.setFont(get_font(16))
         love.graphics.setColor(UI.COLORS.gold)
         love.graphics.printf("🛡 " .. folio.shield, x, list_y + 5, w, "center")
     end
+    love.graphics.setFont(previous_font)
 end
 
 --- Disegna meter macchie
 function UI.drawStainMeter(folio, x, y, w, h)
+    local high_contrast = RuntimeUI.high_contrast()
     local ratio = folio.stain_count / folio.stain_threshold
+    if ratio < 0 then ratio = 0 end
+    if ratio > 1 then ratio = 1 end
     
     -- Background
     love.graphics.setColor(UI.COLORS.progress_bg)
@@ -167,15 +202,17 @@ function UI.drawStainMeter(folio, x, y, w, h)
     love.graphics.rectangle("line", x, y, w, h, 4, 4)
     
     -- Testo
-    love.graphics.setColor(UI.COLORS.parchment)
+    love.graphics.setColor(high_contrast and 1.0 or UI.COLORS.parchment[1], high_contrast and 0.96 or UI.COLORS.parchment[2], high_contrast and 0.86 or UI.COLORS.parchment[3], 1)
+    love.graphics.setFont(get_font(14))
     love.graphics.printf(
-        string.format("Macchia: %d/%d", folio.stain_count, folio.stain_threshold),
-        x, y + 3, w, "center"
+        string.format("Stain: %d/%d", folio.stain_count, folio.stain_threshold),
+        x, y + RuntimeUI.sized(3), w, "center"
     )
 end
 
 --- Disegna singolo elemento checklist
 function UI.drawElement(name, elem, x, y, w, h)
+    local high_contrast = RuntimeUI.high_contrast()
     local icon = ELEMENT_ICONS[name] or "?"
     local is_active = elem.unlocked and not elem.completed
     
@@ -190,27 +227,29 @@ function UI.drawElement(name, elem, x, y, w, h)
     love.graphics.rectangle("fill", x, y, w, h, 4, 4)
     
     -- Icona
-    local icon_size = h - 8
+    local icon_size = h - RuntimeUI.sized(8)
     if elem.unlocked then
         love.graphics.setColor(is_active and UI.COLORS.gold or UI.COLORS.completed)
     else
         love.graphics.setColor(UI.COLORS.locked)
     end
-    love.graphics.rectangle("fill", x + 4, y + 4, icon_size, icon_size, 2, 2)
-    love.graphics.setColor(UI.COLORS.text)
-    love.graphics.printf(icon, x + 4, y + 8, icon_size, "center")
+    love.graphics.rectangle("fill", x + RuntimeUI.sized(4), y + RuntimeUI.sized(4), icon_size, icon_size, 2, 2)
+    love.graphics.setFont(get_font(14))
+    love.graphics.setColor(high_contrast and 0.08 or UI.COLORS.text[1], high_contrast and 0.06 or UI.COLORS.text[2], high_contrast and 0.04 or UI.COLORS.text[3], 1)
+    love.graphics.printf(icon, x + RuntimeUI.sized(4), y + RuntimeUI.sized(8), icon_size, "center")
     
     -- Nome
-    local text_x = x + icon_size + 12
+    local text_x = x + icon_size + RuntimeUI.sized(12)
+    love.graphics.setFont(get_font(14))
     love.graphics.setColor(elem.unlocked and UI.COLORS.text or UI.COLORS.locked)
-    love.graphics.print(name, text_x, y + 5)
+    love.graphics.print(name, text_x, y + RuntimeUI.sized(5))
     
     -- Progress bar
     if elem.unlocked then
-        local bar_w = w - icon_size - 80
-        local bar_h = 12
+        local bar_w = w - icon_size - RuntimeUI.sized(86)
+        local bar_h = RuntimeUI.sized(12)
         local bar_x = text_x
-        local bar_y = y + h - bar_h - 6
+        local bar_y = y + h - bar_h - RuntimeUI.sized(6)
         
         -- Background bar
         love.graphics.setColor(UI.COLORS.progress_bg)
@@ -224,10 +263,11 @@ function UI.drawElement(name, elem, x, y, w, h)
         end
         
         -- Slot text
+        love.graphics.setFont(get_font(12))
         love.graphics.setColor(UI.COLORS.parchment)
         love.graphics.printf(
             string.format("%d/%d", elem.cells_filled, elem.cells_total),
-            bar_x + bar_w + 5, bar_y - 1, 40, "left"
+            bar_x + bar_w + RuntimeUI.sized(5), bar_y - RuntimeUI.sized(1), RuntimeUI.sized(40), "left"
         )
     end
     
@@ -245,12 +285,12 @@ end
 -- ══════════════════════════════════════════════════════════════════
 
 local DIE_DISPLAY = {
-    [1] = {color = UI.COLORS.stain, label = "MACCHIA!"},
+    [1] = {color = UI.COLORS.stain, label = "STAIN!"},
     [2] = {color = UI.COLORS.progress_fill, label = "+1 slot"},
     [3] = {color = UI.COLORS.progress_fill, label = "+1 slot"},
     [4] = {color = UI.COLORS.progress_fill, label = "+1 slot"},
     [5] = {color = UI.COLORS.progress_fill, label = "+1 slot"},
-    [6] = {color = UI.COLORS.gold, label = "ORO!"},
+    [6] = {color = UI.COLORS.gold, label = "GOLD!"},
 }
 
 --- Disegna pannello risultati dadi
@@ -260,13 +300,13 @@ local DIE_DISPLAY = {
 function UI.drawDiceResults(results, x, y)
     if not results or #results == 0 then return end
     
-    local die_size = 50
-    local spacing = 10
+    local die_size = RuntimeUI.sized(50)
+    local spacing = RuntimeUI.sized(10)
     local w = (#results * (die_size + spacing)) + spacing
-    local h = die_size + 40
+    local h = die_size + RuntimeUI.sized(40)
     
     -- Background
-    love.graphics.setColor(UI.COLORS.panel)
+    love.graphics.setColor(UI.COLORS.panel[1], UI.COLORS.panel[2], UI.COLORS.panel[3], RuntimeUI.high_contrast() and 0.94 or UI.COLORS.panel[4])
     love.graphics.rectangle("fill", x, y, w, h, 6, 6)
     
     -- Disegna ogni dado
@@ -279,6 +319,7 @@ end
 
 --- Disegna singolo dado stilizzato
 function UI.drawDie(value, x, y, size, used)
+    local previous_font = love.graphics.getFont()
     local display = DIE_DISPLAY[value] or {color = UI.COLORS.text_light, label = "?"}
     
     -- Background dado
@@ -296,14 +337,17 @@ function UI.drawDie(value, x, y, size, used)
     love.graphics.setLineWidth(1)
     
     -- Valore
+    love.graphics.setFont(get_font(math.floor(size * 0.45)))
     love.graphics.setColor(0.1, 0.1, 0.1)
-    love.graphics.printf(tostring(value), x, y + size/2 - 10, size, "center")
+    love.graphics.printf(tostring(value), x, y + size / 2 - RuntimeUI.sized(10), size, "center")
     
     -- Label sotto
     if not used then
+        love.graphics.setFont(get_font(14))
         love.graphics.setColor(display.color)
-        love.graphics.printf(display.label, x - 10, y + size + 2, size + 20, "center")
+        love.graphics.printf(display.label, x - RuntimeUI.sized(10), y + size + RuntimeUI.sized(2), size + RuntimeUI.sized(20), "center")
     end
+    love.graphics.setFont(previous_font)
 end
 
 -- ══════════════════════════════════════════════════════════════════
@@ -320,14 +364,17 @@ end
 ---@param highlight_cells table|nil {row, col} celle piazzabili evidenziate
 function UI.drawPatternGrid(folio, element_name, x, y, cell_size, selected_cell, highlight_cells)
     if not folio then return end
+    local high_contrast = RuntimeUI.high_contrast()
     local elem = folio.elements[element_name]
     if not elem then return end
+    local previous_font = love.graphics.getFont()
     local pattern = elem.pattern
     local spacing = 4
     local total_w = pattern.cols * (cell_size + spacing) - spacing
     local total_h = pattern.rows * (cell_size + spacing) - spacing
     -- Titolo pattern
-    love.graphics.setColor(UI.COLORS.text)
+    love.graphics.setFont(get_font(14))
+    love.graphics.setColor(high_contrast and 0.08 or UI.COLORS.text[1], high_contrast and 0.06 or UI.COLORS.text[2], high_contrast and 0.04 or UI.COLORS.text[3], 1)
     love.graphics.printf(pattern.name, x, y - 25, total_w, "center")
     -- Prepara lookup highlight
     local highlight_lookup = {}
@@ -350,11 +397,13 @@ function UI.drawPatternGrid(folio, element_name, x, y, cell_size, selected_cell,
         end
     end
     -- Progress sotto la griglia
-    love.graphics.setColor(UI.COLORS.text)
+    love.graphics.setFont(get_font(12))
+    love.graphics.setColor(high_contrast and 0.08 or UI.COLORS.text[1], high_contrast and 0.06 or UI.COLORS.text[2], high_contrast and 0.04 or UI.COLORS.text[3], 1)
     love.graphics.printf(
         string.format("%d/%d", elem.cells_filled, elem.cells_total),
         x, y + total_h + 8, total_w, "center"
     )
+    love.graphics.setFont(previous_font)
     return total_w, total_h
 end
 
@@ -367,6 +416,8 @@ end
 ---@param selected boolean Se la cella è selezionata
 ---@param highlight boolean Se la cella è piazzabile e evidenziata
 function UI.drawPatternCell(x, y, size, constraint, placed, selected, highlight)
+    local high_contrast = RuntimeUI.high_contrast()
+    local previous_font = love.graphics.getFont()
     -- Background cella
     if placed then
         -- Cella con dado piazzato
@@ -374,6 +425,7 @@ function UI.drawPatternCell(x, y, size, constraint, placed, selected, highlight)
         love.graphics.setColor(color[1], color[2], color[3], 0.9)
         love.graphics.rectangle("fill", x, y, size, size, 4, 4)
         -- Valore dado
+        love.graphics.setFont(get_font(math.floor(size * 0.45)))
         love.graphics.setColor(1, 1, 1)
         love.graphics.printf(tostring(placed.value), x, y + size/2 - 10, size, "center")
     elseif constraint then
@@ -382,6 +434,7 @@ function UI.drawPatternCell(x, y, size, constraint, placed, selected, highlight)
             -- Vincolo numerico
             love.graphics.setColor(0.85, 0.80, 0.70)
             love.graphics.rectangle("fill", x, y, size, size, 4, 4)
+            love.graphics.setFont(get_font(math.floor(size * 0.42)))
             love.graphics.setColor(UI.COLORS.text)
             love.graphics.printf(tostring(constraint), x, y + size/2 - 10, size, "center")
         else
@@ -402,7 +455,11 @@ function UI.drawPatternCell(x, y, size, constraint, placed, selected, highlight)
     end
     -- Bordo highlight piazzabile
     if highlight then
-        love.graphics.setColor(0.2, 0.5, 1.0, 0.7) -- blu acceso
+        if high_contrast then
+            love.graphics.setColor(0.05, 0.45, 1.0, 0.92)
+        else
+            love.graphics.setColor(0.2, 0.5, 1.0, 0.7) -- bright blue
+        end
         love.graphics.setLineWidth(3)
         love.graphics.rectangle("line", x - 2, y - 2, size + 4, size + 4, 5, 5)
         love.graphics.setLineWidth(1)
@@ -419,6 +476,7 @@ function UI.drawPatternCell(x, y, size, constraint, placed, selected, highlight)
         love.graphics.setColor(0.6, 0.55, 0.45, 0.5)
         love.graphics.rectangle("line", x, y, size, size, 4, 4)
     end
+    love.graphics.setFont(previous_font)
 end
 
 --- Disegna tutte le griglie degli elementi sbloccati

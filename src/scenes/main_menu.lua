@@ -2,10 +2,16 @@
 -- Scena menu principale stile "libri impilati" (UI ridisegnata: pulsanti orizzontali)
 
 local MainMenu = {}
+local AudioManager = require("src.core.audio_manager")
+local RuntimeUI = require("src.core.runtime_ui")
 local music = nil
 local menu_font = nil
+local menu_font_size = 0
 local music_play_attempted = false
 local menu_bg = nil
+
+local MENU_REF_W = 1536
+local MENU_REF_H = 1024
 
 local menu_items = {
     {label = "Continue", enabled = false},
@@ -15,15 +21,50 @@ local menu_items = {
     {label = "Quit", enabled = true},
 }
 
--- Absolute positions for menu items (from design). Each entry: x,y,w,h
--- Coordinate precise per centrare ogni pulsante sulla costina corrispondente (tarate su screenshot)
-local menu_positions = {
-    {x=260, y=110, w=210, h=70, angle=-0.06},   -- Continue: primo libro in alto
-    {x=260, y=185, w=210, h=70, angle=-0.06},   -- New Game: secondo libro
-    {x=260, y=265, w=210, h=70, angle=-0.06},   -- Settings: terzo libro
-    {x=260, y=345, w=210, h=70, angle=-0.06},   -- Wishlist: quarto libro
-    {x=320, y=440, w=210, h=70, angle=-0.06},   -- Quit: rotolo in basso
+-- Positions anchored to resources/ui/menu.png reference space (1536x1024)
+local menu_positions_ref = {
+    {x = 172, y = 125, w = 220, h = 52}, -- Continue (book 1)
+    {x = 177, y = 232, w = 226, h = 54}, -- New Game (book 2)
+    {x = 182, y = 340, w = 232, h = 55}, -- Settings (book 3)
+    {x = 186, y = 458, w = 244, h = 58}, -- Wishlist Now! (book 4)
+    {x = 196, y = 593, w = 220, h = 54}, -- Quit (book 5)
 }
+
+local menu_positions_screen = nil
+
+local function get_menu_background_rect(window_w, window_h)
+    if not menu_bg then
+        return nil
+    end
+
+    local bw, bh = menu_bg:getWidth(), menu_bg:getHeight()
+    local scale = math.min(1, math.min(window_w / bw, window_h / bh))
+    local draw_w = bw * scale
+    local draw_h = bh * scale
+    local draw_x = window_w * 0.5 - draw_w * 0.5
+    local draw_y = window_h * 0.5 - draw_h * 0.5
+    return draw_x, draw_y, draw_w, draw_h, scale
+end
+
+local function build_menu_positions_screen(window_w, window_h)
+    local bg_x, bg_y, bg_w, bg_h = get_menu_background_rect(window_w, window_h)
+    if not bg_x then
+        return nil
+    end
+
+    local scale_x = bg_w / MENU_REF_W
+    local scale_y = bg_h / MENU_REF_H
+    local projected = {}
+    for i, ref in ipairs(menu_positions_ref) do
+        projected[i] = {
+            x = bg_x + ref.x * scale_x,
+            y = bg_y + ref.y * scale_y,
+            w = ref.w * scale_x,
+            h = ref.h * scale_y,
+        }
+    end
+    return projected
+end
 
 
 
@@ -35,12 +76,47 @@ local WISHLIST_URL = "https://store.steampowered.com/"
 local modal_message = nil
 local modal_timer = 0
 
-local selected = 2 -- Default: Start Game
+local selected = nil
 local hovered = nil -- Indice del pulsante sotto il mouse
+local keyboard_focus = false
+local mouse_has_moved = false
+
+local function first_enabled_index()
+    for i, item in ipairs(menu_items) do
+        if item.enabled then
+            return i
+        end
+    end
+    return 1
+end
+
+local function get_audio_settings()
+    local ok, SettingsState = pcall(function() return require("src.core.settings_state") end)
+    if ok and SettingsState and SettingsState.get then
+        local state = SettingsState.get()
+        if state and state.audio then
+            return state.audio
+        end
+    end
+    return nil
+end
+
+local function get_menu_music_volume()
+    local audio = get_audio_settings()
+    if not audio then return 0.2 end
+    if audio.mute_music then return 0 end
+    local v = tonumber(audio.music_volume) or 0.6
+    if v < 0 then v = 0 end
+    if v > 1 then v = 1 end
+    return v
+end
 
 function MainMenu:enter()
     -- Reset selezione
-    selected = 2
+    selected = nil
+    hovered = nil
+    keyboard_focus = false
+    mouse_has_moved = false
     log("[MainMenu] enter() called")
     -- Log audio subsystem state
     if love.audio and love.audio.getActiveSourceCount then
@@ -51,7 +127,8 @@ function MainMenu:enter()
     end
 
     -- Load menu font once (safe)
-    if not menu_font then
+    local desired_font_size = RuntimeUI.sized(19)
+    if not menu_font or menu_font_size ~= desired_font_size then
         local candidates = {
             "resources/font/Manuskript Gothisch UNZ1A.ttf",
             "resources/font/Manuskript.ttf",
@@ -60,9 +137,10 @@ function MainMenu:enter()
         }
         for _, fname in ipairs(candidates) do
             if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(fname) then
-                local ok, f = pcall(function() return love.graphics.newFont(fname, 28) end)
+                local ok, f = pcall(function() return love.graphics.newFont(fname, desired_font_size) end)
                 if ok and f then
                     menu_font = f
+                    menu_font_size = desired_font_size
                     log("[MainMenu] menu font loaded: " .. fname)
                     break
                 end
@@ -70,8 +148,9 @@ function MainMenu:enter()
         end
         if not menu_font then
             -- fallback to system font
-            local ok, f = pcall(function() return love.graphics.newFont(28) end)
+            local ok, f = pcall(function() return love.graphics.newFont(desired_font_size) end)
             menu_font = (ok and f) or love.graphics.getFont()
+            menu_font_size = desired_font_size
             log("[MainMenu] menu font fallback in use")
         end
     end
@@ -95,11 +174,12 @@ function MainMenu:enter()
             if ok and src then
                 music = src
                 music:setLooping(true)
-                -- Lower default menu music volume to be less intrusive
-                music:setVolume(0.2)
+                music:setVolume(get_menu_music_volume())
                 if love.audio and love.audio.setVolume then pcall(function() love.audio.setVolume(1) end) end
                 local played_ok = pcall(function() music:play() end)
                 log(string.format("[MainMenu] play called .ogg success=%s isPlaying=%s", tostring(played_ok), tostring(music:isPlaying())))
+                _G.menu_music_source = music
+                AudioManager.register_music_source("main_menu", music)
             else
                 -- silent failure loading menu music
             end
@@ -107,6 +187,7 @@ function MainMenu:enter()
             -- maintitle.ogg not found
         end
     elseif not music:isPlaying() then
+        pcall(function() music:setVolume(get_menu_music_volume()) end)
         pcall(function() music:play() end)
     end
 
@@ -128,14 +209,21 @@ function MainMenu:enter()
                 local oksrc, ssrc = pcall(function() return love.audio.newSource(sd) end)
                 if oksrc and ssrc then
                     ssrc:setLooping(true)
-                    ssrc:setVolume(0.2)
+                    ssrc:setVolume(get_menu_music_volume())
                     pcall(function() love.audio.play(ssrc) end)
                     music = ssrc
+                    _G.menu_music_source = music
+                    AudioManager.register_music_source("main_menu", music)
                 end
             end
         end
     else
         -- music not available (silent)
+    end
+
+    if music then
+        _G.menu_music_source = music
+        AudioManager.register_music_source("main_menu", music)
     end
 
     -- Detect save file presence (enable Continue if found)
@@ -171,13 +259,12 @@ end
 
 function MainMenu:update(dt)
     -- Stub (animazioni future)
-    -- Reset hover (verrà aggiornato in love.mousemoved)
-    hovered = nil
     -- If we have a loaded music Source but it's not playing, try once to play it
     if music and not music:isPlaying() and not music_play_attempted then
         music_play_attempted = true
         pcall(function() music:play() end)
     end
+    AudioManager.refresh_music()
 
     -- Modal timer
     if modal_timer and modal_timer > 0 then
@@ -188,17 +275,18 @@ end
 
 function MainMenu:draw()
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    local high_contrast = RuntimeUI.high_contrast()
+    local reduced_motion = RuntimeUI.reduced_animations()
     -- Ensure full-screen scissor reset
     if love.graphics.setScissor then love.graphics.setScissor() end
     -- draw menu background if available, otherwise fallback to solid black
     if menu_bg then
-        local bw, bh = menu_bg:getWidth(), menu_bg:getHeight()
-        -- Non ritagliare e non ingrandire: adattiamo l'immagine senza upscaling
-        local scale = math.min(1, math.min(w / bw, h / bh))
-        local dw, dh = bw * scale, bh * scale
+        local bg_x, bg_y, _, _, scale = get_menu_background_rect(w, h)
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(menu_bg, w/2 - dw/2, h/2 - dh/2, 0, scale, scale)
+        love.graphics.draw(menu_bg, bg_x, bg_y, 0, scale, scale)
+        menu_positions_screen = build_menu_positions_screen(w, h)
     else
+        menu_positions_screen = nil
         if love.graphics.clear then
             love.graphics.clear(0, 0, 0, 1)
         else
@@ -215,27 +303,16 @@ function MainMenu:draw()
     love.graphics.setFont(font)
     for i, item in ipairs(menu_items) do
         local text = item.label or ""
-        local pos = menu_positions[i]
+        local pos = menu_positions_screen and menu_positions_screen[i] or nil
         if pos then
             local tx = pos.x
             local ty = pos.y
             local tw = pos.w
             local th = pos.h
-            local isHovered = (i == hovered)
-
-            -- Glow behind text when hovered (use rect from design)
-            if isHovered then
-                love.graphics.push()
-                love.graphics.setBlendMode("add")
-                local glowPad = 14
-                love.graphics.setColor(0.98, 0.86, 0.34, 0.14)
-                love.graphics.rectangle("fill", tx - glowPad/2, ty - glowPad/2, tw + glowPad, th + glowPad, 12, 12)
-                love.graphics.setBlendMode("alpha")
-                love.graphics.pop()
-            end
+            local isHovered = mouse_has_moved and (i == hovered)
 
             -- Shadow for legibility (offset)
-            love.graphics.setColor(0,0,0,0.6)
+            love.graphics.setColor(0,0,0,high_contrast and 0.76 or 0.6)
             -- center text inside the provided box
             local tfont = font
             local twidth = tfont:getWidth(text)
@@ -246,13 +323,13 @@ function MainMenu:draw()
 
             -- Main text color
             if not item.enabled then
-                love.graphics.setColor(0.5,0.45,0.4,0.85)
-            elseif i == selected then
-                love.graphics.setColor(0.98,0.86,0.34,1)
+                love.graphics.setColor(0.45,0.40,0.36,0.9)
+            elseif keyboard_focus and i == selected then
+                love.graphics.setColor(high_contrast and 1.0 or 0.98, high_contrast and 0.90 or 0.86, high_contrast and 0.40 or 0.34, 1)
             elseif isHovered then
-                love.graphics.setColor(0.97,0.88,0.6,1)
+                love.graphics.setColor(high_contrast and 1.0 or 0.97, high_contrast and 0.94 or 0.88, high_contrast and 0.72 or 0.6, 1)
             else
-                love.graphics.setColor(0.95,0.90,0.80,1)
+                love.graphics.setColor(high_contrast and 1.0 or 0.95, high_contrast and 0.96 or 0.90, high_contrast and 0.88 or 0.80, 1)
             end
             love.graphics.print(text, text_x, text_y)
         else
@@ -262,22 +339,16 @@ function MainMenu:draw()
             local tw = font:getWidth(text)
             local th = font:getHeight()
             local y = stack_y + (i-1) * (th + spacing)
-            local isHovered = (i == hovered)
-            if isHovered then
-                love.graphics.push(); love.graphics.setBlendMode("add")
-                love.graphics.setColor(0.98, 0.86, 0.34, 0.14)
-                love.graphics.rectangle("fill", left_x - 12/2, y - 12/2, tw + 12, th + 12, 8, 8)
-                love.graphics.setBlendMode("alpha"); love.graphics.pop()
-            end
-            love.graphics.setColor(0,0,0,0.6); love.graphics.print(text, left_x + 2, y + 2)
+            local isHovered = mouse_has_moved and (i == hovered)
+            love.graphics.setColor(0,0,0,high_contrast and 0.76 or 0.6); love.graphics.print(text, left_x + 2, y + 2)
             if not item.enabled then
-                love.graphics.setColor(0.5,0.45,0.4,0.85)
-            elseif i == selected then
-                love.graphics.setColor(0.98,0.86,0.34,1)
+                love.graphics.setColor(0.45,0.40,0.36,0.9)
+            elseif keyboard_focus and i == selected then
+                love.graphics.setColor(high_contrast and 1.0 or 0.98, high_contrast and 0.90 or 0.86, high_contrast and 0.40 or 0.34, 1)
             elseif isHovered then
-                love.graphics.setColor(0.97,0.88,0.6,1)
+                love.graphics.setColor(high_contrast and 1.0 or 0.97, high_contrast and 0.94 or 0.88, high_contrast and 0.72 or 0.6, 1)
             else
-                love.graphics.setColor(0.95,0.90,0.80,1)
+                love.graphics.setColor(high_contrast and 1.0 or 0.95, high_contrast and 0.96 or 0.90, high_contrast and 0.88 or 0.80, 1)
             end
             love.graphics.print(text, left_x, y)
         end
@@ -291,41 +362,42 @@ function MainMenu:draw()
         love.graphics.setFont(font)
         local bw, bh = 520, 140
         local mx, my = (w - bw) / 2, (h - bh) / 2
-        love.graphics.setColor(0,0,0,0.7)
+        love.graphics.setColor(0,0,0,high_contrast and 0.84 or 0.7)
         love.graphics.rectangle("fill", mx, my, bw, bh, 8, 8)
-        love.graphics.setColor(0.95,0.9,0.8,1)
+        love.graphics.setColor(high_contrast and 1.0 or 0.95, high_contrast and 0.96 or 0.9, high_contrast and 0.88 or 0.8, 1)
         love.graphics.printf(modal_message, mx + 16, my + 18, bw - 32, "center")
     end
 end
 
 function MainMenu:keypressed(key)
     if key == "up" then
+        keyboard_focus = true
+        if not selected then
+            selected = first_enabled_index()
+        end
         repeat
             selected = selected - 1
             if selected < 1 then selected = #menu_items end
         until menu_items[selected].enabled
+        AudioManager.play_ui("move")
     elseif key == "down" then
+        keyboard_focus = true
+        if not selected then
+            selected = first_enabled_index()
+        end
         repeat
             selected = selected + 1
             if selected > #menu_items then selected = 1 end
         until menu_items[selected].enabled
+        AudioManager.play_ui("move")
     elseif key == "return" or key == "space" then
-        local item = menu_items[selected]
-        if item.label == "New Game" or item.label == "Start Game" then
-            -- Start a fresh run with a new seed
-            local seed = os.time()
-            pcall(function() if love.math and love.math.setRandomSeed then love.math.setRandomSeed(seed) end end)
-            if _G.set_module then
-                _G.set_module("scriptorium")
-            end
-        elseif item.label == "Quit" then
-            love.event.quit()
-        elseif item.label == "Settings" then
-            if _G.set_module then
-                _G.set_module("settings")
-            end
+        AudioManager.play_ui("confirm")
+        if hovered and not keyboard_focus then
+            MainMenu:activate(hovered)
         else
-            -- Delegate to activate for other items (Continue/Wishlist)
+            if not selected then
+                selected = first_enabled_index()
+            end
             MainMenu:activate(selected)
         end
     end
@@ -333,17 +405,23 @@ end
 
 function MainMenu:mousepressed(x, y, button)
     if button ~= 1 then return end
-    -- Usa solo menu_positions statico
+    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    local projected_positions = build_menu_positions_screen(w, h)
     for i, item in ipairs(menu_items) do
-        local pos = menu_positions[i]
+        local pos = projected_positions and projected_positions[i] or nil
         if pos then
             if x >= pos.x and x <= pos.x + pos.w and y >= pos.y and y <= pos.y + pos.h then
-                if item.enabled then selected = i; hovered = i; MainMenu:activate(i) end
+                if item.enabled then
+                    selected = i
+                    hovered = i
+                    keyboard_focus = false
+                    AudioManager.play_ui("confirm")
+                    MainMenu:activate(i)
+                end
                 return
             end
         else
             -- Fallback to text bounding box
-            local w, h = love.graphics.getWidth(), love.graphics.getHeight()
             local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
             local font = menu_font or love.graphics.getFont()
             local spacing = 18
@@ -352,7 +430,13 @@ function MainMenu:mousepressed(x, y, button)
             local th = font:getHeight()
             local yb = stack_y + (i-1) * (th + spacing)
             if x >= left_x and x <= left_x + tw and y >= yb and y <= yb + th then
-                if item.enabled then selected = i; hovered = i; MainMenu:activate(i) end
+                if item.enabled then
+                    selected = i
+                    hovered = i
+                    keyboard_focus = false
+                    AudioManager.play_ui("confirm")
+                    MainMenu:activate(i)
+                end
                 return
             end
         end
@@ -360,16 +444,20 @@ function MainMenu:mousepressed(x, y, button)
 end
 
 function MainMenu:mousemoved(x, y, dx, dy)
+    mouse_has_moved = true
+    keyboard_focus = false
+    local prev_hovered = hovered
     hovered = nil
+    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    local projected_positions = build_menu_positions_screen(w, h)
     for i, item in ipairs(menu_items) do
-        local pos = menu_positions[i]
+        local pos = projected_positions and projected_positions[i] or nil
         if pos then
             if x >= pos.x and x <= pos.x + pos.w and y >= pos.y and y <= pos.y + pos.h then
                 if item.enabled then hovered = i end
                 break
             end
         else
-            local w, h = love.graphics.getWidth(), love.graphics.getHeight()
             local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
             local spacing = 18
             local font = menu_font or love.graphics.getFont()
@@ -382,6 +470,9 @@ function MainMenu:mousemoved(x, y, dx, dy)
                 break
             end
         end
+    end
+    if hovered and hovered ~= prev_hovered and not RuntimeUI.reduced_animations() then
+        AudioManager.play_ui("hover")
     end
 end
 
@@ -408,7 +499,7 @@ function MainMenu:activate(idx)
             end
         end
         if save_file_candidate then
-            log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to desk prototype (save=%s)", tostring(save_file_candidate)))
+            log(string.format("[MainMenu] Continue pressed but no SaveManager; switching to scriptorium (save=%s)", tostring(save_file_candidate)))
             if _G.set_module then
                 _G.set_module("scriptorium")
             end

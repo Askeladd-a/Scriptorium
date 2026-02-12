@@ -20,18 +20,36 @@
 --   "MARRONE"= richiede pigmento marrone
 --   1-6      = richiede dado con quel valore
 
+local TilePatternGenerator = require("src.content.tile_pattern_generator")
+
 local M = {}
+
+M.USE_TILE_GENERATOR = true
+M.TILE_ROWS = 4
+M.TILE_COLS = 5
+M.TILE_GENERATOR_SEED_MODE = "seeded" -- "seeded" | "random"
+M.TILE_GENERATOR_VARIATIONS = true
+
+function M.setTileSeedMode(mode)
+    if mode == "seeded" or mode == "random" then
+        M.TILE_GENERATOR_SEED_MODE = mode
+    end
+end
+
+function M.setTileVariationsEnabled(enabled)
+    M.TILE_GENERATOR_VARIATIONS = enabled and true or false
+end
 
 -- ══════════════════════════════════════════════════════════════════
 -- CONFIGURAZIONE ELEMENTI
 -- ══════════════════════════════════════════════════════════════════
 
 M.ELEMENT_CONFIG = {
-    TEXT = { rows = 2, cols = 3, cells = 6 },
-    DROPCAPS = { rows = 1, cols = 2, cells = 2 },
-    BORDERS = { rows = 2, cols = 2, cells = 4 },
-    CORNERS = { rows = 2, cols = 2, cells = 4 },
-    MINIATURE = { rows = 1, cols = 3, cells = 3 },
+    TEXT = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
+    DROPCAPS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
+    BORDERS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
+    CORNERS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
+    MINIATURE = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
 }
 
 -- ══════════════════════════════════════════════════════════════════
@@ -389,15 +407,34 @@ end
 ---@return table {TEXT=pattern, DROPCAPS=pattern, ...}
 function M.getRandomPatternSet(seed)
     local elements = {"TEXT", "DROPCAPS", "BORDERS", "CORNERS", "MINIATURE"}
-    local result = {}
-    
+
+    if M.USE_TILE_GENERATOR then
+        local generated = TilePatternGenerator.generate_set(seed, elements, {
+            rows = M.TILE_ROWS,
+            cols = M.TILE_COLS,
+            seed_mode = M.TILE_GENERATOR_SEED_MODE,
+            variations = M.TILE_GENERATOR_VARIATIONS,
+        })
+        local complete = true
+        for _, elem in ipairs(elements) do
+            if not generated[elem] then
+                complete = false
+                break
+            end
+        end
+        if complete then
+            return generated
+        end
+    end
+
+    local fallback = {}
     for i, elem in ipairs(elements) do
         -- Seed diverso per ogni elemento ma riproducibile
         local elemSeed = seed and (seed + i * 1000) or nil
-        result[elem] = M.getRandomForElement(elem, elemSeed)
+        fallback[elem] = M.getRandomForElement(elem, elemSeed)
     end
-    
-    return result
+
+    return fallback
 end
 
 --- Converte indice lineare a coordinate riga,colonna
@@ -441,7 +478,7 @@ end
 function M.canPlace(pattern, row, col, diceValue, diceColor)
     -- Verifica bounds
     if row < 1 or row > pattern.rows or col < 1 or col > pattern.cols then
-        return false, "Fuori dalla griglia"
+        return false, "Out of bounds"
     end
     
     local constraint = M.getConstraint(pattern, row, col)
@@ -462,7 +499,7 @@ function M.canPlace(pattern, row, col, diceValue, diceColor)
         end
     end
     
-    return false, "Vincolo sconosciuto"
+    return false, "Unknown constraint"
 end
 
 --- Conta celle vuote (senza vincolo) in un pattern
