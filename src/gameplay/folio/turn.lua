@@ -1,5 +1,12 @@
 local FolioTurn = {}
 
+local function entries_match(a, b)
+    if not a or not b then
+        return false
+    end
+    return a.element == b.element and a.index == b.index and a.row == b.row and a.col == b.col
+end
+
 function FolioTurn.registerPush(self, push_mode)
     self.turn_pushes = self.turn_pushes + 1
     local push_risk_always = self.rule_effects and self.rule_effects.push_risk_always or nil
@@ -54,6 +61,22 @@ function FolioTurn.getToolUsesLeft(self)
     return self.tool_uses_left or 0
 end
 
+function FolioTurn.getSeals(self)
+    return self.seals or 0
+end
+
+function FolioTurn.canSpendSeal(self)
+    return (self.seals or 0) > 0
+end
+
+function FolioTurn.spendSeal(self)
+    if not self:canSpendSeal() then
+        return false
+    end
+    self.seals = math.max(0, (self.seals or 0) - 1)
+    return true
+end
+
 function FolioTurn.canUseTool(self, id)
     if not self.rule_cards or not self.rule_cards.tool then
         return false
@@ -88,12 +111,46 @@ function FolioTurn.getWetSummary(self)
     }
 end
 
+function FolioTurn.hasWetPair(self)
+    local by_value = {}
+    local by_color = {}
+    for _, entry in ipairs(self.wet_buffer) do
+        if entry.value then
+            by_value[entry.value] = (by_value[entry.value] or 0) + 1
+            if by_value[entry.value] >= 2 then
+                return true
+            end
+        end
+        if entry.color then
+            by_color[entry.color] = (by_color[entry.color] or 0) + 1
+            if by_color[entry.color] >= 2 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function FolioTurn.tryAwardDoubleSeal(self)
+    self.turn_flags = self.turn_flags or {}
+    if self.turn_flags.double_awarded then
+        return false
+    end
+    if not self:hasWetPair() then
+        return false
+    end
+    self.seals = (self.seals or 0) + 1
+    self.turn_flags.double_awarded = true
+    return true
+end
+
 function FolioTurn.discardWetBuffer(self)
     if #self.wet_buffer == 0 then
         self.turn_risk = 0
         self.turn_pushes = 0
         self.turn_flags.over_four = false
         self.turn_flags.preparation_used = false
+        self.turn_flags.double_awarded = false
         return 0
     end
 
@@ -111,8 +168,68 @@ function FolioTurn.discardWetBuffer(self)
     self.turn_pushes = 0
     self.turn_flags.over_four = false
     self.turn_flags.preparation_used = false
+    self.turn_flags.double_awarded = false
     self:_pruneBorderMotifPairs()
     return discarded_wet_count
+end
+
+function FolioTurn.salvageWetBufferOnBust(self, preferred_entry)
+    local touched_sections = {}
+    local saved_entry = nil
+    local discarded = 0
+    local save_slot = nil
+
+    for i, entry in ipairs(self.wet_buffer) do
+        if preferred_entry and entries_match(entry, preferred_entry) then
+            save_slot = i
+            break
+        end
+    end
+    if not save_slot and #self.wet_buffer > 0 then
+        save_slot = #self.wet_buffer
+    end
+
+    for i, entry in ipairs(self.wet_buffer) do
+        local elem = self.elements[entry.element]
+        if elem and elem.wet[entry.index] then
+            elem.wet[entry.index] = nil
+            if i == save_slot then
+                entry.wet = false
+                elem.placed[entry.index] = entry
+                elem.cells_filled = elem.cells_filled + 1
+                touched_sections[entry.element] = true
+                saved_entry = entry
+            else
+                discarded = discarded + 1
+            end
+        end
+    end
+
+    self.wet_buffer = {}
+    self.turn_risk = 0
+    self.turn_pushes = 0
+    self.turn_flags.over_four = false
+    self.turn_flags.preparation_used = false
+    self.turn_flags.double_awarded = false
+
+    for element, _ in pairs(touched_sections) do
+        local elem = self.elements[element]
+        if elem and (not elem.completed) and elem.cells_filled >= elem.cells_total then
+            elem.completed = true
+            self:onElementCompleted(element)
+        end
+    end
+
+    self:_pruneBorderMotifPairs()
+    local busted = self:addStain(2)
+    self.quality = self:calculateQuality()
+
+    return {
+        saved = saved_entry,
+        discarded = discarded,
+        stains_added = 2,
+        busted = busted,
+    }
 end
 
 function FolioTurn.commitWetBuffer(self)
@@ -186,6 +303,7 @@ function FolioTurn.commitWetBuffer(self)
     self.turn_pushes = 0
     self.turn_flags.over_four = false
     self.turn_flags.preparation_used = false
+    self.turn_flags.double_awarded = false
 
     for element, _ in pairs(touched_sections) do
         local elem = self.elements[element]

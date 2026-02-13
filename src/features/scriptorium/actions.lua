@@ -4,8 +4,14 @@ local DiceFaces = require("src.core.dice_faces")
 
 local Helpers = require("src.features.scriptorium.helpers")
 local point_in_rect = Helpers.point_in_rect
+local get_die_color_key = Helpers.get_die_color_key
 
 local Actions = {}
+
+local function random_int(min_v, max_v)
+    local rnd = (love and love.math and love.math.random) or math.random
+    return rnd(min_v, max_v)
+end
 
 function Actions.requestRoll(self, max_dice)
     if self.state == "rolling" then
@@ -22,11 +28,91 @@ function Actions.requestRoll(self, max_dice)
     end
 end
 
+function Actions.getSelectedDie(self)
+    if not self.dice_results then
+        return nil, nil
+    end
+    if type(self.selected_die) ~= "number" then
+        return nil, nil
+    end
+    local die = self.dice_results[self.selected_die]
+    if not die then
+        return nil, nil
+    end
+    return die, self.selected_die
+end
+
+function Actions.setSelectedDie(self, index)
+    if type(index) ~= "number" or not self.dice_results then
+        self.selected_die = nil
+        return false
+    end
+    local die = self.dice_results[index]
+    if not die or die.used then
+        return false
+    end
+    self.selected_die = index
+    return true
+end
+
+function Actions.refreshDiceLegality(self)
+    local folio = self.run and self.run.current_folio
+    if not folio or not self.dice_results then
+        return
+    end
+
+    for _, die in ipairs(self.dice_results) do
+        if die and not die.used then
+            die.color_key = get_die_color_key(die.value, self.value_to_color)
+            local all_valid = folio:getAllValidPlacements(die.value, die.color_key)
+            local legal_count = 0
+            for _, placements in pairs(all_valid) do
+                legal_count = legal_count + #placements
+            end
+            die.legal_count = legal_count
+            die.unusable = legal_count <= 0
+        elseif die then
+            die.legal_count = 0
+            die.unusable = false
+        end
+    end
+end
+
+function Actions.autoSelectPlayableDie(self)
+    if not self.dice_results then
+        self.selected_die = nil
+        return nil
+    end
+
+    local current_die, current_index = self:getSelectedDie()
+    if current_die and not current_die.used and not current_die.unusable then
+        return current_index
+    end
+
+    for i, die in ipairs(self.dice_results) do
+        if die and not die.used and not die.unusable then
+            self.selected_die = i
+            return i
+        end
+    end
+
+    for i, die in ipairs(self.dice_results) do
+        if die and not die.used then
+            self.selected_die = i
+            return i
+        end
+    end
+
+    self.selected_die = nil
+    return nil
+end
+
 function Actions.performPushAll(self)
     if self.state ~= "placing" or not self.run or not self.run.current_folio then
         return
     end
     self.run.current_folio:registerPush("all")
+    self.selected_die = nil
     AudioManager.play_ui("confirm")
     self:requestRoll(nil)
 end
@@ -36,6 +122,7 @@ function Actions.performPushOne(self)
         return
     end
     self.run.current_folio:registerPush("one")
+    self.selected_die = nil
     AudioManager.play_ui("confirm")
     self:requestRoll(1)
 end
@@ -46,6 +133,8 @@ function Actions.performStop(self)
     end
     AudioManager.play_ui("confirm")
     local commit_result = self.run.current_folio:commitWetBuffer()
+    self.dice_results = {}
+    self.selected_die = nil
     if self.run.current_folio.completed then
         self:showMessage("COMPLETED!", "Folio completed successfully.")
     elseif commit_result and commit_result.still_wet and commit_result.still_wet > 0 then
@@ -66,7 +155,7 @@ function Actions.consumeUnusableDie(self)
         return nil
     end
     for _, die in ipairs(self.dice_results) do
-        if die and die.unusable and not die.burned then
+        if die and die.unusable and not die.burned and not die.used then
             die.burned = true
             die.used = true
             return die
@@ -92,6 +181,105 @@ function Actions.performPreparation(self, mode)
     end
 end
 
+function Actions.performSealReroll(self)
+    local folio = self.run and self.run.current_folio
+    if self.state ~= "placing" or not folio or not (folio.canSpendSeal and folio:canSpendSeal()) then
+        return
+    end
+    local die = self:getSelectedDie()
+    if not die or die.used then
+        self:autoSelectPlayableDie()
+        die = self:getSelectedDie()
+        if not die or die.used then
+            return
+        end
+    end
+    if not folio:spendSeal() then
+        return
+    end
+
+    die.value = random_int(1, 6)
+    die.color_key = get_die_color_key(die.value, self.value_to_color)
+    die.unusable = false
+    die.burned = false
+    AudioManager.play_ui("confirm")
+    self:refreshDiceLegality()
+    self:autoSelectPlayableDie()
+    self:showMessage("Sigillo", "Reroll 1 die", 1.2)
+end
+
+function Actions.performSealAdjust(self, delta)
+    local folio = self.run and self.run.current_folio
+    if self.state ~= "placing" or not folio or not (folio.canSpendSeal and folio:canSpendSeal()) then
+        return
+    end
+    local die = self:getSelectedDie()
+    if not die or die.used then
+        self:autoSelectPlayableDie()
+        die = self:getSelectedDie()
+        if not die or die.used then
+            return
+        end
+    end
+    local next_value = (die.value or 1) + (delta or 0)
+    if next_value < 1 or next_value > 6 then
+        return
+    end
+    if not folio:spendSeal() then
+        return
+    end
+
+    die.value = next_value
+    die.color_key = get_die_color_key(die.value, self.value_to_color)
+    die.unusable = false
+    die.burned = false
+    AudioManager.play_ui("confirm")
+    self:refreshDiceLegality()
+    self:autoSelectPlayableDie()
+    self:showMessage("Sigillo", "Adjusted die to " .. tostring(die.value), 1.2)
+end
+
+function Actions.placeSelectedDieAt(self, element, row, col)
+    if self.state ~= "placing" or not self.run or not self.run.current_folio then
+        return false
+    end
+    local die = self:getSelectedDie()
+    if not die or die.used then
+        return false
+    end
+
+    local folio = self.run.current_folio
+    local color_key = get_die_color_key(die.value, self.value_to_color)
+    local fallback_pigment = (DiceFaces.DiceFaces[die.value] and DiceFaces.DiceFaces[die.value].fallback) or "OCRA_GIALLA"
+    local ok, reason, _, events = folio:addWetDie(element, row, col, die.value, color_key, fallback_pigment)
+    if not ok then
+        self:showMessage("Placement blocked", reason or "Cannot place die", 1.6)
+        AudioManager.play_ui("back")
+        self:refreshDiceLegality()
+        return false
+    end
+
+    die.used = true
+    die.unusable = false
+    die.legal_count = 0
+    die.burned = false
+    self.selected_cell = {element = element, row = row, col = col}
+    AudioManager.play_ui("move")
+
+    if events and events.double_awarded then
+        self:showMessage("Doppia!", "+1 Sigillo", 1.8)
+    end
+
+    self:refreshDiceLegality()
+    self:autoSelectPlayableDie()
+
+    if folio.completed then
+        self:showMessage("COMPLETED!", "Folio completed successfully.")
+    end
+
+    return true
+end
+
 function Actions.autoPlaceDie(self, value)
     if not self.run or not self.run.current_folio then
         return false
@@ -99,7 +287,7 @@ function Actions.autoPlaceDie(self, value)
 
     local folio = self.run.current_folio
     local function try_place_value(candidate_value)
-        local color_key = Helpers.get_die_color_key(candidate_value, self.value_to_color)
+        local color_key = get_die_color_key(candidate_value, self.value_to_color)
         for _, element in ipairs(folio.ELEMENTS) do
             local valid_cells = folio:getValidPlacements(element, candidate_value, color_key)
             if #valid_cells > 0 then
@@ -137,48 +325,58 @@ function Actions.onDiceSettled(self, values)
         return
     end
 
-    self.dice_results = {}
     local folio = self.run.current_folio
     local roll_candidates = {}
     for _, value in ipairs(values) do
         roll_candidates[#roll_candidates + 1] = {
             value = value,
-            color = Helpers.get_die_color_key(value, self.value_to_color),
+            color = get_die_color_key(value, self.value_to_color),
         }
     end
 
     if not folio:hasAnyLegalPlacement(roll_candidates) then
-        local wet_dice_lost = folio:discardWetBuffer()
-        folio:addStain(1)
+        local preferred = folio.pickBestWetPlacement and folio:pickBestWetPlacement() or nil
+        local bust_outcome = folio.salvageWetBufferOnBust and folio:salvageWetBufferOnBust(preferred)
+            or {saved = nil, stains_added = 2}
         if self.run then
             self.run.reputation = math.max(0, (self.run.reputation or 0) - 1)
         end
-        self:showMessage("BUST!", string.format("No legal placement. Wet lost: %d", wet_dice_lost), 2.4)
+        local saved_text = "none"
+        if bust_outcome and bust_outcome.saved then
+            saved_text = tostring(bust_outcome.saved.element or "cell")
+        end
+        self:showMessage("BUST!", string.format("Saved: %s | +%d stains", saved_text, bust_outcome.stains_added or 2), 2.6)
+        self.dice_results = {}
+        self.selected_die = nil
         self.state = "waiting"
         return
     end
 
+    self.dice_results = {}
     for _, value in ipairs(values) do
-        local color_key = Helpers.get_die_color_key(value, self.value_to_color)
-        local was_placed = self:autoPlaceDie(value)
         self.dice_results[#self.dice_results + 1] = {
             value = value,
-            color_key = color_key,
-            used = was_placed,
-            unusable = not was_placed,
+            color_key = get_die_color_key(value, self.value_to_color),
+            used = false,
+            unusable = false,
+            burned = false,
+            legal_count = 0,
         }
     end
 
+    self.selected_cell = nil
+    self:refreshDiceLegality()
+    self:autoSelectPlayableDie()
+
     if folio.busted then
         self:showMessage("BUST!", "The folio is ruined. Reputation lost.")
+        self.state = "waiting"
     elseif folio.completed then
         self:showMessage("COMPLETED!", "Folio completed successfully.")
-    elseif folio:getWetCount() > 0 then
+        self.state = "waiting"
+    else
         self.state = "placing"
-        return
     end
-
-    self.state = "waiting"
 end
 
 function Actions.showMessage(self, text, subtext, duration)
@@ -204,10 +402,25 @@ function Actions.getInstructions(self)
     end
     if self.state == "placing" then
         local folio = self.run and self.run.current_folio
-        if folio then
-            return string.format("Mouse: STOP, PUSH ALL, PUSH 1, PREP | Wet:%d  Risk:%d", folio:getWetCount(), folio:getTurnRisk())
+        local die = self:getSelectedDie()
+        if folio and die then
+            return string.format(
+                "Flow: choose die -> legal cells -> STOP/PUSH | Die:%d Wet:%d Risk:%d Sigilli:%d",
+                die.value,
+                folio:getWetCount(),
+                folio:getTurnRisk(),
+                folio.getSeals and folio:getSeals() or 0
+            )
         end
-        return "Mouse: STOP, PUSH ALL, PUSH 1, PREP"
+        if folio then
+            return string.format(
+                "Mouse: select die, place, STOP/PUSH | Wet:%d Risk:%d Sigilli:%d",
+                folio:getWetCount(),
+                folio:getTurnRisk(),
+                folio.getSeals and folio:getSeals() or 0
+            )
+        end
+        return "Mouse: select die, place, STOP/PUSH"
     end
     return "Mouse-only mode"
 end
@@ -246,6 +459,40 @@ function Actions.mousepressed(self, x, y, button)
     end
 
     if self.state == "placing" then
+        if self.ui_hit.dice_chips then
+            for _, chip in ipairs(self.ui_hit.dice_chips) do
+                if point_in_rect(ui_x, ui_y, chip.rect) then
+                    if self:setSelectedDie(chip.index) then
+                        AudioManager.play_ui("toggle")
+                    end
+                    return
+                end
+            end
+        end
+
+        if point_in_rect(ui_x, ui_y, self.ui_hit.seal_reroll_button) then
+            self:performSealReroll()
+            return
+        end
+        if point_in_rect(ui_x, ui_y, self.ui_hit.seal_plus_button) then
+            self:performSealAdjust(1)
+            return
+        end
+        if point_in_rect(ui_x, ui_y, self.ui_hit.seal_minus_button) then
+            self:performSealAdjust(-1)
+            return
+        end
+
+        if self.ui_hit.placement_cells then
+            for _, hit in ipairs(self.ui_hit.placement_cells) do
+                if point_in_rect(ui_x, ui_y, hit.rect) then
+                    if self:placeSelectedDieAt(hit.element, hit.row, hit.col) then
+                        return
+                    end
+                end
+            end
+        end
+
         if point_in_rect(ui_x, ui_y, self.ui_hit.stop_button) then
             self:performStop()
             return

@@ -170,12 +170,68 @@ local function test_when_roll_busts_then_wet_is_lost_and_stain_is_added()
     assert_eq(folio.stain_count, 1, "stain should be applied")
 end
 
+local function test_when_wet_pair_is_created_then_seal_is_awarded_once_per_turn()
+    local folio = Folio.new("BIFOLIO", 106, make_run_setup())
+    assert_eq(folio:getSeals(), 0, "fresh folio should start with zero seals")
+
+    local first = first_valid_cell(folio, "TEXT", 1, "MARRONE")
+    local ok_first = folio:addWetDie("TEXT", first.row, first.col, 1, "MARRONE", "OCRA_BRUNA")
+    assert_true(ok_first, "first wet die should be queued")
+    assert_eq(folio:getSeals(), 0, "single die should not create a pair")
+
+    local second = first_valid_cell(folio, "TEXT", 1, "MARRONE")
+    local ok_second = folio:addWetDie("TEXT", second.row, second.col, 1, "MARRONE", "OCRA_BRUNA")
+    assert_true(ok_second, "second wet die should be queued")
+    assert_eq(folio:getSeals(), 1, "first pair in turn should award one seal")
+
+    local third = first_valid_cell(folio, "TEXT", 1, "MARRONE")
+    local ok_third = folio:addWetDie("TEXT", third.row, third.col, 1, "MARRONE", "OCRA_BRUNA")
+    assert_true(ok_third, "third wet die should be queued")
+    assert_eq(folio:getSeals(), 1, "additional pairs in same turn should not grant extra seals")
+
+    folio:commitWetBuffer()
+    local fourth = first_valid_cell(folio, "TEXT", 2, "VERDE")
+    local ok_fourth = folio:addWetDie("TEXT", fourth.row, fourth.col, 2, "VERDE", "VERDERAME")
+    assert_true(ok_fourth, "fourth wet die should be queued")
+    local fifth = first_valid_cell(folio, "TEXT", 2, "VERDE")
+    local ok_fifth = folio:addWetDie("TEXT", fifth.row, fifth.col, 2, "VERDE", "VERDERAME")
+    assert_true(ok_fifth, "fifth wet die should be queued")
+    assert_eq(folio:getSeals(), 2, "new turn pair should award a new seal")
+end
+
+local function test_when_bust_resolves_then_one_wet_is_saved_and_two_stains_are_added()
+    local folio = Folio.new("BIFOLIO", 107, make_run_setup())
+
+    local first = first_valid_cell(folio, "TEXT", 1, "MARRONE")
+    local ok_first = folio:addWetDie("TEXT", first.row, first.col, 1, "MARRONE", "OCRA_BRUNA")
+    assert_true(ok_first, "first wet die should queue")
+    local second = first_valid_cell(folio, "TEXT", 2, "VERDE")
+    local ok_second = folio:addWetDie("TEXT", second.row, second.col, 2, "VERDE", "VERDERAME")
+    assert_true(ok_second, "second wet die should queue")
+    assert_eq(folio:getWetCount(), 2, "two wet dice should be queued before bust resolve")
+
+    local outcome = folio:salvageWetBufferOnBust()
+    assert_true(outcome and outcome.saved ~= nil, "one wet placement should be saved")
+    assert_eq(outcome.stains_added, 2, "bust resolve should add two stains")
+    assert_eq(folio.stain_count, 2, "folio should track two added stains")
+    assert_eq(folio:getWetCount(), 0, "wet buffer should be cleared after bust resolve")
+    assert_eq(folio.elements.TEXT.cells_filled, 1, "exactly one wet die should become committed")
+end
+
 local tests = {
     { name = "when_pushing_then_stop_commits_wet_buffer", fn = test_when_pushing_then_stop_commits_wet_buffer },
     { name = "when_push_risk_is_two_then_stop_adds_one_stain", fn = test_when_push_risk_is_two_then_stop_adds_one_stain },
     {
         name = "when_roll_busts_then_wet_is_lost_and_stain_is_added",
         fn = test_when_roll_busts_then_wet_is_lost_and_stain_is_added,
+    },
+    {
+        name = "when_wet_pair_is_created_then_seal_is_awarded_once_per_turn",
+        fn = test_when_wet_pair_is_created_then_seal_is_awarded_once_per_turn,
+    },
+    {
+        name = "when_bust_resolves_then_one_wet_is_saved_and_two_stains_are_added",
+        fn = test_when_bust_resolves_then_one_wet_is_saved_and_two_stains_are_added,
     },
     {
         name = "when_first_stop_is_humid_then_one_die_stays_wet_until_next_stop",

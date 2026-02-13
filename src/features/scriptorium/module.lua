@@ -25,6 +25,7 @@ local Scriptorium = {
     zoom_element = nil,
     show_run_setup = false,
     value_to_color = nil,
+    current_focus = nil,
 }
 
 local BG_PATH = "resources/ui/game.png"
@@ -359,6 +360,76 @@ local function get_tile_key_for_constraint(constraint)
     return nil
 end
 
+function Scriptorium:buildPlacementFocus()
+    if self.state ~= "placing" or not self.run or not self.run.current_folio then
+        return nil
+    end
+    local die = self.getSelectedDie and self:getSelectedDie() or nil
+    if not die or die.used then
+        return nil
+    end
+
+    local folio = self.run.current_folio
+    local focus = {
+        active = true,
+        die_index = self.selected_die,
+        die_value = die.value,
+        die_color = die.color_key,
+        legal_by_element = {},
+        best_element = nil,
+        best_entry = nil,
+        total_legal = 0,
+    }
+
+    local best_element_count = -1
+    local best_element_score = -math.huge
+    for _, element in ipairs(folio.ELEMENTS) do
+        local placements = folio:getValidPlacements(element, die.value, die.color_key)
+        if #placements > 0 then
+            local zone_info = {
+                count = #placements,
+                by_key = {},
+            }
+            focus.total_legal = focus.total_legal + #placements
+
+            local element_best_score = -math.huge
+            for _, placement in ipairs(placements) do
+                local preview = folio.getPlacementDecisionPreview
+                        and folio:getPlacementDecisionPreview(element, placement.row, placement.col, die.value, die.color_key)
+                    or {quality_gain = 0, risk_gain = 0, score = 0}
+                local key = tostring(placement.row) .. ":" .. tostring(placement.col)
+                local entry = {
+                    element = element,
+                    row = placement.row,
+                    col = placement.col,
+                    quality_gain = preview.quality_gain or 0,
+                    risk_gain = preview.risk_gain or 0,
+                    score = preview.score or 0,
+                }
+                zone_info.by_key[key] = entry
+                if entry.score > element_best_score then
+                    element_best_score = entry.score
+                end
+                if not focus.best_entry or entry.score > (focus.best_entry.score or -math.huge) then
+                    focus.best_entry = entry
+                end
+            end
+
+            focus.legal_by_element[element] = zone_info
+            if zone_info.count > best_element_count or (zone_info.count == best_element_count and element_best_score > best_element_score) then
+                best_element_count = zone_info.count
+                best_element_score = element_best_score
+                focus.best_element = element
+            end
+        end
+    end
+
+    if focus.total_legal <= 0 then
+        return nil
+    end
+    return focus
+end
+
 function Scriptorium:enter(folio_set_type, seed)
     self.run = Run.new(folio_set_type or "BIFOLIO", seed)
     self.value_to_color = VALUE_TO_COLOR
@@ -374,6 +445,7 @@ function Scriptorium:enter(folio_set_type, seed)
     self.view_mode = "overview"
     self.zoom_element = nil
     self.show_run_setup = true
+    self.current_focus = nil
 
     if _G.log then
         _G.log("[Scriptorium] New run started: " .. tostring(self.run.folio_set))
@@ -392,6 +464,7 @@ function Scriptorium:exit()
     self.view_mode = "overview"
     self.zoom_element = nil
     self.show_run_setup = false
+    self.current_focus = nil
 end
 
 function Scriptorium:update(dt)
@@ -478,7 +551,7 @@ function Scriptorium:drawLegendPanel(bg, high_contrast)
     end
 end
 
-function Scriptorium:drawTileCell(x, y, size, constraint, marker, placed, tile_key, high_contrast)
+function Scriptorium:drawTileCell(x, y, size, constraint, marker, placed, tile_key, high_contrast, visual)
     love.graphics.setColor(0.34, 0.29, 0.20, 0.80)
     love.graphics.rectangle("fill", x, y, size, size, 2, 2)
     love.graphics.setColor(0.62, 0.43, 0.23, 0.28)
@@ -511,9 +584,11 @@ function Scriptorium:drawTileCell(x, y, size, constraint, marker, placed, tile_k
         love.graphics.printf(tostring(placed.value), x, y + (size * 0.24), size, "center")
 
         if placed.wet then
-            love.graphics.setFont(get_font(math.max(7, math.floor(size * 0.17)), false))
-            love.graphics.setColor(0.98, 0.95, 0.84, 0.9)
-            love.graphics.printf("WET", x, y + size - RuntimeUI.sized(10), size, "center")
+            local dot = math.max(3, math.floor(size * 0.10))
+            love.graphics.setColor(0.96, 0.90, 0.70, 0.92)
+            love.graphics.circle("fill", x + size - dot - 3, y + size - dot - 3, dot)
+            love.graphics.setColor(0.32, 0.22, 0.12, 0.82)
+            love.graphics.circle("line", x + size - dot - 3, y + size - dot - 3, dot)
         end
     end
 
@@ -569,6 +644,30 @@ function Scriptorium:drawTileCell(x, y, size, constraint, marker, placed, tile_k
             love.graphics.printf(m, x + RuntimeUI.sized(1), y + RuntimeUI.sized(1), RuntimeUI.sized(10), "center")
         end
     end
+
+    if visual and visual.dim then
+        love.graphics.setColor(0.07, 0.05, 0.04, 0.42)
+        love.graphics.rectangle("fill", x + 1, y + 1, size - 2, size - 2, 2, 2)
+    end
+
+    if visual and visual.highlight then
+        local pulse = (love.timer and love.timer.getTime and (0.5 + 0.5 * math.sin(love.timer.getTime() * 5.0))) or 0.5
+        love.graphics.setColor(0.98, 0.84, 0.52, 0.60 + pulse * 0.24)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", x + 1, y + 1, size - 2, size - 2, 3, 3)
+        love.graphics.setLineWidth(1)
+    end
+
+    if visual and visual.preview and not placed then
+        local quality = visual.preview.quality_gain or 0
+        local risk = visual.preview.risk_gain or 0
+        local txt = string.format("+Q%d / +R%d", quality, risk)
+        love.graphics.setColor(0.10, 0.08, 0.06, 0.78)
+        love.graphics.rectangle("fill", x + 2, y + size - RuntimeUI.sized(13), size - 4, RuntimeUI.sized(11), 2, 2)
+        love.graphics.setFont(get_font(math.max(7, math.floor(size * 0.14)), false))
+        love.graphics.setColor(0.96, 0.90, 0.78, 0.96)
+        love.graphics.printf(txt, x + 2, y + size - RuntimeUI.sized(12), size - 4, "center")
+    end
 end
 
 local function resolve_panel_rect(bg, def)
@@ -590,11 +689,33 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
 
     local rect = zone.rect
     local hover = point_in_rect(self.mouse_x, self.mouse_y, rect)
+    local focus = self.current_focus
+    local spotlight = focus and focus.active
+    local zone_focus = spotlight and focus.legal_by_element and focus.legal_by_element[zone.element] or nil
+    local zone_has_legal = zone_focus and zone_focus.count and zone_focus.count > 0
+    local zone_is_best = spotlight and focus.best_element == zone.element
+    local zone_dim = spotlight and (not zone_has_legal)
 
-    love.graphics.setColor(0.20, 0.14, 0.09, hover and 0.24 or 0.16)
+    local fill_alpha = hover and 0.24 or 0.16
+    local line_alpha = hover and 0.62 or 0.44
+    if zone_dim then
+        fill_alpha = 0.08
+        line_alpha = 0.24
+    elseif zone_has_legal then
+        fill_alpha = math.max(fill_alpha, 0.28)
+        line_alpha = math.max(line_alpha, 0.58)
+    end
+
+    love.graphics.setColor(0.20, 0.14, 0.09, fill_alpha)
     love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, 6, 6)
-    love.graphics.setColor(0.64, 0.47, 0.30, hover and 0.62 or 0.44)
+    love.graphics.setColor(0.64, 0.47, 0.30, line_alpha)
     love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, 6, 6)
+    if zone_is_best then
+        love.graphics.setColor(0.96, 0.84, 0.54, 0.80)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", rect.x - RuntimeUI.sized(2), rect.y - RuntimeUI.sized(2), rect.w + RuntimeUI.sized(4), rect.h + RuntimeUI.sized(4), 7, 7)
+        love.graphics.setLineWidth(1)
+    end
 
     local title_rect = {
         x = rect.x,
@@ -602,7 +723,8 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
         w = rect.w,
         h = RuntimeUI.sized(18),
     }
-    draw_text_center(zone.title, title_rect, get_font(15, false), {0.70, 0.51, 0.30, 1})
+    local title_color = zone_dim and {0.50, 0.38, 0.24, 0.70} or {0.70, 0.51, 0.30, 1}
+    draw_text_center(zone.title, title_rect, get_font(15, false), title_color)
 
     local rows = elem.pattern.rows or 4
     local cols = elem.pattern.cols or 5
@@ -621,6 +743,7 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
     local grid_h = cell * rows + gap * (rows - 1)
     local gx = rect.x + (rect.w - grid_w) * 0.5
     local gy = rect.y + top_pad + math.max(0, (usable_h - grid_h) * 0.5)
+    local selected_die = self.getSelectedDie and self:getSelectedDie() or nil
 
     for row = 1, rows do
         for col = 1, cols do
@@ -631,7 +754,25 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
             local tile_key = elem.pattern.tile_keys and elem.pattern.tile_keys[index] or get_tile_key_for_constraint(constraint)
             local marker = elem.pattern.tile_markers and elem.pattern.tile_markers[index] or nil
             local placed = (elem.wet and elem.wet[index]) or elem.placed[index]
-            self:drawTileCell(cx, cy, cell, constraint, marker, placed, tile_key, high_contrast)
+            local key = tostring(row) .. ":" .. tostring(col)
+            local preview = zone_focus and zone_focus.by_key and zone_focus.by_key[key] or nil
+            local visual = nil
+            if spotlight then
+                if preview and elem.unlocked and (not elem.completed) then
+                    visual = {highlight = true, preview = preview}
+                    if selected_die and (not selected_die.used) then
+                        self.ui_hit.placement_cells[#self.ui_hit.placement_cells + 1] = {
+                            element = zone.element,
+                            row = row,
+                            col = col,
+                            rect = {x = cx, y = cy, w = cell, h = cell},
+                        }
+                    end
+                else
+                    visual = {dim = true}
+                end
+            end
+            self:drawTileCell(cx, cy, cell, constraint, marker, placed, tile_key, high_contrast, visual)
         end
     end
 
@@ -641,7 +782,7 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
         y = rect.y + rect.h - RuntimeUI.sized(24),
         w = rect.w,
         h = RuntimeUI.sized(18),
-    }, get_font(13, false), {0.70, 0.51, 0.30, 1})
+    }, get_font(13, false), zone_dim and {0.50, 0.38, 0.24, 0.70} or {0.70, 0.51, 0.30, 1})
 
     if not elem.unlocked then
         love.graphics.setColor(0.08, 0.08, 0.08, 0.20)
@@ -679,6 +820,12 @@ function Scriptorium:drawUnifiedFolioOverview(page, high_contrast)
     love.graphics.rectangle("fill", page.x, page.y, page.w, page.h, 10, 10)
     love.graphics.setColor(0.62, 0.45, 0.28, 0.58)
     love.graphics.rectangle("line", page.x, page.y, page.w, page.h, 10, 10)
+
+    local focus = self.current_focus
+    if focus and focus.active then
+        love.graphics.setColor(0.10, 0.08, 0.06, 0.18)
+        love.graphics.rectangle("fill", page.x, page.y, page.w, page.h, 10, 10)
+    end
 
     local inner = {
         x = page.x + RuntimeUI.sized(16),
@@ -1026,10 +1173,12 @@ function Scriptorium:draw()
     ensure_bg()
     ensure_tiles()
     self.ui_hit = {}
+    self.ui_hit.placement_cells = {}
     self.lock_badges = {}
     local mouse_sx, mouse_sy = love.mouse.getPosition()
     self.mouse_x, self.mouse_y = ResolutionManager.to_virtual(mouse_sx, mouse_sy)
     self.hovered_lock = nil
+    self.current_focus = self:buildPlacementFocus()
 
     local bg = get_bg_rect(w, h)
     local unified_page = self:getUnifiedPagePanel(w, h)
@@ -1096,8 +1245,15 @@ Scriptorium.performPushAll = ScriptoriumActions.performPushAll
 Scriptorium.performPushOne = ScriptoriumActions.performPushOne
 Scriptorium.performStop = ScriptoriumActions.performStop
 Scriptorium.performRestart = ScriptoriumActions.performRestart
+Scriptorium.getSelectedDie = ScriptoriumActions.getSelectedDie
+Scriptorium.setSelectedDie = ScriptoriumActions.setSelectedDie
+Scriptorium.refreshDiceLegality = ScriptoriumActions.refreshDiceLegality
+Scriptorium.autoSelectPlayableDie = ScriptoriumActions.autoSelectPlayableDie
 Scriptorium._consumeUnusableDie = ScriptoriumActions.consumeUnusableDie
 Scriptorium.performPreparation = ScriptoriumActions.performPreparation
+Scriptorium.performSealReroll = ScriptoriumActions.performSealReroll
+Scriptorium.performSealAdjust = ScriptoriumActions.performSealAdjust
+Scriptorium.placeSelectedDieAt = ScriptoriumActions.placeSelectedDieAt
 Scriptorium.autoPlaceDie = ScriptoriumActions.autoPlaceDie
 Scriptorium.onDiceSettled = ScriptoriumActions.onDiceSettled
 Scriptorium.showMessage = ScriptoriumActions.showMessage

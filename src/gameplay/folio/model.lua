@@ -94,11 +94,13 @@ function Folio.new(folio_set_type, seed, run_setup)
     self.turn_flags = {
         over_four = false,
         preparation_used = false,
+        double_awarded = false,
     }
     self.push_risk_enabled = false
     self.preparation_guard = (self.rule_effects.tool_bonus_guard or 0)
     self.first_stop_done = false
     self.tool_uses_left = (self.rule_cards.tool and self.rule_cards.tool.uses_per_folio) or 0
+    self.seals = 0
 
     self.quality = 0
     self.section_stains = {}
@@ -465,7 +467,11 @@ function Folio:addWetDie(element, row, col, dice_value, dice_color, pigment_name
         self.turn_risk = self.turn_risk + 1
     end
 
-    return true, "Queued in wet buffer", placement
+    local events = {
+        double_awarded = self:tryAwardDoubleSeal(),
+    }
+
+    return true, "Queued in wet buffer", placement, events
 end
 
 ---@param element string
@@ -540,6 +546,176 @@ function Folio:getAllValidPlacements(dice_value, dice_color)
         end
     end
     return result
+end
+
+function Folio:_countSectionWet(elem)
+    local wet = 0
+    if not elem or not elem.wet then
+        return wet
+    end
+    for _, placement in pairs(elem.wet) do
+        if placement then
+            wet = wet + 1
+        end
+    end
+    return wet
+end
+
+function Folio:_countTextRubricsEffective()
+    local elem = self.elements.TEXT
+    if not elem then
+        return 0
+    end
+    local rubrics = 0
+    for i = 1, elem.cells_total do
+        local placed = self:_getEffectivePlacement(elem, i)
+        if placed and placed.color == "ROSSO" then
+            rubrics = rubrics + 1
+        end
+    end
+    return rubrics
+end
+
+function Folio:_dropcapsHasColor(color)
+    local elem = self.elements.DROPCAPS
+    if not elem then
+        return false
+    end
+    for i = 1, elem.cells_total do
+        local placed = self:_getEffectivePlacement(elem, i)
+        if placed and placed.color == color then
+            return true
+        end
+    end
+    return false
+end
+
+function Folio:_estimatePlacementQualityGain(element, dice_value, dice_color, meta)
+    local gain = 0
+    if element == "TEXT" then
+        if dice_color == "NERO" then
+            gain = gain + 2
+        elseif dice_color == "MARRONE" then
+            gain = gain + 1
+        elseif dice_color == "ROSSO" then
+            gain = gain + 1
+            if self:_countTextRubricsEffective() == 1 and (self.section_stains.TEXT or 0) == 0 then
+                gain = gain + 2
+            end
+        end
+    elseif element == "DROPCAPS" then
+        if dice_color == "ROSSO" then
+            gain = gain + 2
+            if self:_dropcapsHasColor("BLU") then
+                gain = gain + 2
+            end
+        elseif dice_color == "BLU" then
+            gain = gain + 2
+            if self:_dropcapsHasColor("ROSSO") then
+                gain = gain + 2
+            end
+        elseif dice_color == "GIALLO" then
+            gain = gain + 3
+        else
+            gain = gain + 1
+        end
+    elseif element == "BORDERS" then
+        if dice_color == "GIALLO" then
+            gain = gain + 1
+        else
+            gain = gain + 1
+        end
+        if meta and meta.border_break then
+            gain = gain - 1
+        end
+    elseif element == "MINIATURE" then
+        gain = gain + 1
+        if dice_color == "GIALLO" then
+            gain = gain + 1
+        end
+        if dice_value == 1 or dice_value == 6 then
+            gain = gain + 1
+        end
+    else
+        gain = gain + 1
+    end
+
+    local elem = self.elements[element]
+    if elem and (not elem.completed) then
+        local projected_filled = (elem.cells_filled or 0) + self:_countSectionWet(elem) + 1
+        if projected_filled >= (elem.cells_total or 0) then
+            gain = gain + 2
+        end
+    end
+
+    return gain
+end
+
+function Folio:getPlacementDecisionPreview(element, row, col, dice_value, dice_color)
+    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    if not ok or not meta then
+        return {
+            can_place = false,
+            reason = reason,
+            quality_gain = 0,
+            risk_gain = 0,
+            projected_risk = self.turn_risk or 0,
+            score = 0,
+        }
+    end
+
+    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
+    local risk_gain = 0
+
+    if meta.is_gold then
+        risk_gain = risk_gain + 1
+    end
+    if meta.border_break then
+        risk_gain = risk_gain + 1
+    end
+
+    local risk_on_color = self.rule_effects and self.rule_effects.risk_on_color or nil
+    local risk_on_value = self.rule_effects and self.rule_effects.risk_on_value or nil
+    local risk_on_section = self.rule_effects and self.rule_effects.risk_on_section or nil
+    if risk_on_color and risk_on_color[color] then
+        risk_gain = risk_gain + (risk_on_color[color] or 0)
+    end
+    if risk_on_value and risk_on_value[dice_value] then
+        risk_gain = risk_gain + (risk_on_value[dice_value] or 0)
+    end
+    if risk_on_section and risk_on_section[element] then
+        risk_gain = risk_gain + (risk_on_section[element] or 0)
+    end
+
+    local wet_threshold = 4 + (self.rule_effects and self.rule_effects.safe_wet_threshold_bonus or 0)
+    if (not self.turn_flags.over_four) and (#self.wet_buffer + 1 > wet_threshold) then
+        risk_gain = risk_gain + 1
+    end
+
+    local quality_gain = self:_estimatePlacementQualityGain(element, dice_value, color, meta)
+    local projected_risk = (self.turn_risk or 0) + risk_gain
+
+    return {
+        can_place = true,
+        quality_gain = quality_gain,
+        risk_gain = risk_gain,
+        projected_risk = projected_risk,
+        score = quality_gain - risk_gain,
+    }
+end
+
+function Folio:pickBestWetPlacement()
+    local best = nil
+    local best_score = -math.huge
+    for _, entry in ipairs(self.wet_buffer or {}) do
+        local preview = self:getPlacementDecisionPreview(entry.element, entry.row, entry.col, entry.value, entry.color)
+        local score = preview and preview.score or 0
+        if not best or score > best_score then
+            best = entry
+            best_score = score
+        end
+    end
+    return best
 end
 
 function Folio:_borderMotifHasPermanent(elem, motif)
@@ -823,6 +999,7 @@ function Folio:getStatus()
         quality = self.quality,
         wet = #self.wet_buffer,
         risk = self.turn_risk,
+        seals = self.seals or 0,
         busted = self.busted,
         completed = self.completed,
         border_parity = self.border_parity,
@@ -899,10 +1076,16 @@ Folio.applyPreparation = FolioTurn.applyPreparation
 Folio.getRuleCards = FolioTurn.getRuleCards
 Folio.getRuleEffects = FolioTurn.getRuleEffects
 Folio.getToolUsesLeft = FolioTurn.getToolUsesLeft
+Folio.getSeals = FolioTurn.getSeals
+Folio.canSpendSeal = FolioTurn.canSpendSeal
+Folio.spendSeal = FolioTurn.spendSeal
 Folio.canUseTool = FolioTurn.canUseTool
 Folio.consumeToolUse = FolioTurn.consumeToolUse
 Folio.getWetSummary = FolioTurn.getWetSummary
+Folio.hasWetPair = FolioTurn.hasWetPair
+Folio.tryAwardDoubleSeal = FolioTurn.tryAwardDoubleSeal
 Folio.discardWetBuffer = FolioTurn.discardWetBuffer
+Folio.salvageWetBufferOnBust = FolioTurn.salvageWetBufferOnBust
 Folio.commitWetBuffer = FolioTurn.commitWetBuffer
 
 return Folio

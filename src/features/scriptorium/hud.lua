@@ -12,6 +12,15 @@ function Hud.new(deps)
     local get_unusable_dice_count = deps.get_unusable_dice_count
     local ui_dimensions = deps.ui_dimensions
 
+    local DIE_COLOR_SWATCH = {
+        MARRONE = {0.55, 0.35, 0.20},
+        VERDE = {0.25, 0.55, 0.30},
+        NERO = {0.14, 0.14, 0.14},
+        ROSSO = {0.72, 0.20, 0.15},
+        BLU = {0.24, 0.37, 0.70},
+        GIALLO = {0.85, 0.70, 0.25},
+    }
+
     local methods = {}
 
     function methods.drawStatusBar(self, bg, high_contrast, anchor_page)
@@ -118,31 +127,29 @@ function Hud.new(deps)
         }, get_font(16, false), {0.95, 0.86, 0.68, 1})
 
         local body_top = y + RuntimeUI.sized(24)
-        local status = self.run.getStatus and self.run:getStatus() or {}
-        local cards = status.cards or {}
         local lines = {
-            "Complete Text + Miniature",
-            string.format("Stains room: %d", math.max(0, folio.stain_threshold - folio.stain_count)),
-            string.format("Folio %d", self.run.current_folio_index or 1),
-            "Borders: " .. tostring((folio.border_parity == "EVEN") and "even" or "odd"),
-            "Commission: " .. tostring(cards.commission or "-"),
-            "Parchment: " .. tostring(cards.parchment or "-"),
-            "Tool: " .. tostring(cards.tool or "-"),
+            "Objective: Complete Text + Miniature",
+            "Objective: Keep stains below threshold",
+            "Penalty: Bust saves 1 wet, adds +2 stains",
         }
         local footer_h = RuntimeUI.sized(36)
         local divider_y = note.y + note.h - footer_h - RuntimeUI.sized(14)
         local available_h = math.max(RuntimeUI.sized(84), divider_y - body_top - RuntimeUI.sized(4))
-        local target_px = clamp(math.floor(available_h / #lines) - RuntimeUI.sized(4), 9, 12)
+        local target_px = clamp(math.floor(available_h / #lines) - RuntimeUI.sized(4), 10, 13)
         local body_font = get_font(target_px, false)
-        local line_h = math.max(body_font:getHeight() + RuntimeUI.sized(2), clamp(math.floor(available_h / #lines), RuntimeUI.sized(13), RuntimeUI.sized(20)))
+        local line_h = math.max(body_font:getHeight() + RuntimeUI.sized(4), clamp(math.floor(available_h / #lines), RuntimeUI.sized(16), RuntimeUI.sized(30)))
         love.graphics.setFont(body_font)
         y = body_top
-        for _, line in ipairs(lines) do
+        for i, line in ipairs(lines) do
             if y + line_h > divider_y then
                 break
             end
-            love.graphics.setColor(0.34, 0.25, 0.17, 1)
-            love.graphics.print("• " .. line, note.x + RuntimeUI.sized(10), y)
+            if i == #lines then
+                love.graphics.setColor(0.68, 0.26, 0.18, 1)
+            else
+                love.graphics.setColor(0.34, 0.25, 0.17, 1)
+            end
+            love.graphics.print(line, note.x + RuntimeUI.sized(10), y)
             y = y + line_h
         end
 
@@ -153,6 +160,7 @@ function Hud.new(deps)
         local icons = {
             { short = "S", value = tostring(folio.shield or 0), color = {0.82, 0.68, 0.40, 1}},
             { short = "R", value = tostring(folio:getTurnRisk()), color = {0.85, 0.36, 0.32, 1}},
+            { short = "G", value = tostring(folio.getSeals and folio:getSeals() or 0), color = {0.74, 0.62, 0.28, 1}},
             { short = "P", value = tostring(folio.getPreparationGuard and folio:getPreparationGuard() or 0), color = {0.50, 0.74, 0.88, 1}},
             { short = "T", value = tostring(folio.getToolUsesLeft and folio:getToolUsesLeft() or 0), color = {0.64, 0.88, 0.62, 1}},
         }
@@ -208,8 +216,8 @@ function Hud.new(deps)
 
         local pad = RuntimeUI.sized(12)
         local gap = RuntimeUI.sized(10)
-        local left_w = dock_w * 0.20
-        local mid_w = dock_w * 0.26
+        local left_w = dock_w * 0.18
+        local mid_w = dock_w * 0.34
         local right_w = dock_w - left_w - mid_w - gap * 2 - pad * 2
         local left = {x = dock_x + pad, y = dock_y + pad, w = left_w, h = dock_h - pad * 2}
         local mid = {x = left.x + left.w + gap, y = dock_y + pad, w = mid_w, h = dock_h - pad * 2}
@@ -223,12 +231,15 @@ function Hud.new(deps)
         love.graphics.rectangle("line", mid.x, mid.y, mid.w, mid.h, 6, 6)
 
         local remaining = get_remaining_dice_count(self.dice_results)
+        local seals = folio.getSeals and folio:getSeals() or 0
         local left_label_font = get_font(13, false)
         local left_value_font = get_font(24, true)
+        local left_small_font = get_font(11, false)
         local left_label_h = left_label_font:getHeight()
         local left_value_h = left_value_font:getHeight()
+        local left_small_h = left_small_font:getHeight()
         local left_gap = RuntimeUI.sized(4)
-        local left_stack_h = left_label_h + left_gap + left_value_h
+        local left_stack_h = left_label_h + left_gap + left_value_h + left_gap + left_small_h
         local left_top = left.y + math.max(RuntimeUI.sized(6), math.floor((left.h - left_stack_h) * 0.5))
         draw_text_center("Dice left", {
             x = left.x,
@@ -242,37 +253,123 @@ function Hud.new(deps)
             w = left.w,
             h = left_value_h,
         }, left_value_font, {0.95, 0.82, 0.50, 1})
+        draw_text_center("Seals: " .. tostring(seals), {
+            x = left.x,
+            y = left_top + left_label_h + left_value_h + left_gap * 2,
+            w = left.w,
+            h = left_small_h,
+        }, left_small_font, {0.92, 0.82, 0.56, 1})
 
-        local wet_text = string.format("Wet buffer: %d", folio:getWetCount())
-        local risk_text = string.format("Stain risk: %d", folio:getTurnRisk())
-        local state_text = "State: " .. tostring(self.state or "waiting")
-        local wet_font = get_font(14, false)
-        local risk_font = get_font(14, false)
-        local state_font = get_font(12, false)
-        local wet_h = wet_font:getHeight()
-        local risk_h = risk_font:getHeight()
-        local state_h = state_font:getHeight()
-        local mid_gap = RuntimeUI.sized(4)
-        local mid_stack_h = wet_h + risk_h + state_h + mid_gap * 2
-        local mid_top = mid.y + math.max(RuntimeUI.sized(6), math.floor((mid.h - mid_stack_h) * 0.5))
-        draw_text_center(wet_text, {
-            x = mid.x,
-            y = mid_top,
-            w = mid.w,
-            h = wet_h,
-        }, wet_font, {0.95, 0.90, 0.82, 1})
-        draw_text_center(risk_text, {
-            x = mid.x,
-            y = mid_top + wet_h + mid_gap,
-            w = mid.w,
-            h = risk_h,
-        }, risk_font, {0.95, 0.68, 0.52, 1})
-        draw_text_center(state_text, {
-            x = mid.x,
-            y = mid_top + wet_h + risk_h + mid_gap * 2,
-            w = mid.w,
-            h = state_h,
-        }, state_font, {0.88, 0.78, 0.64, 1})
+        local selected_die = (self.getSelectedDie and self:getSelectedDie()) or nil
+        local focus = self.current_focus
+        local summary_font = get_font(12, false)
+        local summary_h = summary_font:getHeight()
+        draw_text_center(
+            string.format("Wet %d   Risk %d   Sigilli %d", folio:getWetCount(), folio:getTurnRisk(), seals),
+            {
+                x = mid.x,
+                y = mid.y + RuntimeUI.sized(5),
+                w = mid.w,
+                h = summary_h,
+            },
+            summary_font,
+            {0.95, 0.90, 0.82, 1}
+        )
+
+        self.ui_hit.dice_chips = {}
+        local chips = self.dice_results or {}
+        local chip_count = #chips
+        local chip_gap = RuntimeUI.sized(6)
+        local chip_pad = RuntimeUI.sized(8)
+        local available_w = math.max(RuntimeUI.sized(60), mid.w - chip_pad * 2)
+        local chip_w = RuntimeUI.sized(34)
+        if chip_count > 0 then
+            chip_w = math.min(RuntimeUI.sized(42), math.floor((available_w - chip_gap * math.max(0, chip_count - 1)) / chip_count))
+            chip_w = math.max(RuntimeUI.sized(24), chip_w)
+        end
+        local chips_w = (chip_count > 0) and (chip_count * chip_w + math.max(0, chip_count - 1) * chip_gap) or 0
+        local chips_x = mid.x + math.max(chip_pad, math.floor((mid.w - chips_w) * 0.5))
+        local chips_y = mid.y + RuntimeUI.sized(26)
+        local chip_h = RuntimeUI.sized(30)
+        for i, die in ipairs(chips) do
+            local rect = {
+                x = chips_x + (i - 1) * (chip_w + chip_gap),
+                y = chips_y,
+                w = chip_w,
+                h = chip_h,
+            }
+            local selected = (self.selected_die == i)
+            local unusable = die.unusable and (not die.used)
+            local fill = DIE_COLOR_SWATCH[die.color_key] or {0.50, 0.40, 0.30}
+            if die.used then
+                fill = {0.24, 0.20, 0.16}
+            end
+            love.graphics.setColor(fill[1], fill[2], fill[3], die.used and 0.42 or 0.92)
+            love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, 5, 5)
+            local line = selected and {0.98, 0.90, 0.70, 1} or {0.70, 0.52, 0.33, 0.7}
+            if unusable then
+                line = {0.85, 0.36, 0.32, 0.9}
+            end
+            love.graphics.setColor(line[1], line[2], line[3], line[4])
+            love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, 5, 5)
+            draw_text_center(
+                tostring(die.value or "?"),
+                rect,
+                get_font(15, true),
+                die.used and {0.70, 0.64, 0.54, 0.72} or {0.96, 0.92, 0.84, 1}
+            )
+            if unusable then
+                love.graphics.setColor(0.85, 0.34, 0.30, 0.86)
+                love.graphics.setLineWidth(2)
+                love.graphics.line(rect.x + RuntimeUI.sized(4), rect.y + RuntimeUI.sized(4), rect.x + rect.w - RuntimeUI.sized(4), rect.y + rect.h - RuntimeUI.sized(4))
+                love.graphics.line(rect.x + rect.w - RuntimeUI.sized(4), rect.y + RuntimeUI.sized(4), rect.x + RuntimeUI.sized(4), rect.y + rect.h - RuntimeUI.sized(4))
+                love.graphics.setLineWidth(1)
+            end
+            if not die.used then
+                self.ui_hit.dice_chips[#self.ui_hit.dice_chips + 1] = {index = i, rect = rect}
+            end
+        end
+
+        local selected_text = "Select a die to place"
+        if selected_die then
+            selected_text = string.format(
+                "Selected d%d (%s)",
+                selected_die.value or 0,
+                tostring(selected_die.color_key or "-")
+            )
+        end
+        draw_text_center(
+            selected_text,
+            {
+                x = mid.x,
+                y = chips_y + chip_h + RuntimeUI.sized(2),
+                w = mid.w,
+                h = summary_h,
+            },
+            summary_font,
+            {0.92, 0.84, 0.70, 1}
+        )
+
+        local best_text = "Best: -"
+        if focus and focus.best_entry then
+            best_text = string.format(
+                "Best: %s  +Q%d / +R%d",
+                tostring(focus.best_entry.element or "-"),
+                focus.best_entry.quality_gain or 0,
+                focus.best_entry.risk_gain or 0
+            )
+        end
+        draw_text_center(
+            best_text,
+            {
+                x = mid.x,
+                y = chips_y + chip_h + summary_h + RuntimeUI.sized(2),
+                w = mid.w,
+                h = summary_h,
+            },
+            get_font(11, false),
+            {0.92, 0.74, 0.52, 1}
+        )
 
         local menu_rect = {
             x = dock_x + dock_w - RuntimeUI.sized(122),
@@ -296,6 +393,36 @@ function Hud.new(deps)
 
         local button_gap = RuntimeUI.sized(8)
         local placing_mode = (self.state == "placing")
+
+        self.ui_hit.seal_reroll_button = nil
+        self.ui_hit.seal_plus_button = nil
+        self.ui_hit.seal_minus_button = nil
+
+        local function draw_small_action(rect, title, base_color, line_color, enabled)
+            local hover = point_in_rect(self.mouse_x, self.mouse_y, rect)
+            local alpha = enabled and (hover and 0.96 or 0.84) or 0.36
+            love.graphics.setColor(base_color[1], base_color[2], base_color[3], alpha)
+            love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, 4, 4)
+            love.graphics.setColor(line_color[1], line_color[2], line_color[3], alpha)
+            love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, 4, 4)
+            draw_text_center(title, rect, get_font(10, true), {0.98, 0.92, 0.84, enabled and 1 or 0.5})
+        end
+
+        if placing_mode then
+            local can_seal = seals > 0 and selected_die and (not selected_die.used)
+            local seal_y = mid.y + mid.h - RuntimeUI.sized(24)
+            local seal_gap = RuntimeUI.sized(6)
+            local seal_w = (mid.w - RuntimeUI.sized(16) - seal_gap * 2) / 3
+            local reroll_rect = {x = mid.x + RuntimeUI.sized(8), y = seal_y, w = seal_w, h = RuntimeUI.sized(20)}
+            local plus_rect = {x = reroll_rect.x + seal_w + seal_gap, y = seal_y, w = seal_w, h = RuntimeUI.sized(20)}
+            local minus_rect = {x = plus_rect.x + seal_w + seal_gap, y = seal_y, w = seal_w, h = RuntimeUI.sized(20)}
+            draw_small_action(reroll_rect, "SIGILLO R", {0.32, 0.28, 0.16}, {0.88, 0.74, 0.44}, can_seal)
+            draw_small_action(plus_rect, "SIGILLO +1", {0.24, 0.36, 0.24}, {0.68, 0.86, 0.60}, can_seal)
+            draw_small_action(minus_rect, "SIGILLO -1", {0.24, 0.32, 0.42}, {0.62, 0.82, 0.94}, can_seal)
+            self.ui_hit.seal_reroll_button = can_seal and reroll_rect or nil
+            self.ui_hit.seal_plus_button = can_seal and plus_rect or nil
+            self.ui_hit.seal_minus_button = can_seal and minus_rect or nil
+        end
 
         if placing_mode then
             local min_prep_h = RuntimeUI.sized(34)
@@ -385,6 +512,7 @@ function Hud.new(deps)
             self.ui_hit.prepare_guard_button = nil
             self.ui_hit.restart_button = can_restart and primary_rect or nil
             self.ui_hit.roll_button = can_roll and secondary_rect or nil
+            self.ui_hit.dice_chips = {}
 
             local primary_alpha = can_restart and (primary_hover and 0.96 or 0.88) or 0.42
             local secondary_alpha = can_roll and (secondary_hover and 0.96 or 0.88) or 0.42
