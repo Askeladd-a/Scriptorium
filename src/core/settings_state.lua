@@ -374,7 +374,7 @@ function SettingsState.apply()
         end
     end
 
-    -- Runtime globals usati da scene/UI
+    -- Runtime globals usati da moduli/UI
     _G.game_settings = deep_copy(current)
     _G.show_fps = current.video.show_fps
     _G.target_fps = current.video.fps_limit

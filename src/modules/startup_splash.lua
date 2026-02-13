@@ -123,9 +123,8 @@ function Splash:draw()
     -- subtitle intentionally omitted to match design
 end
 
-function Splash:keypressed(key)
-    AudioManager.play_ui("confirm")
-    switchToMainMenu()
+function Splash:keypressed(_key)
+    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function Splash:mousepressed(x,y,button)

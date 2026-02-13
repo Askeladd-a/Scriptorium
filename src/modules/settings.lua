@@ -1,5 +1,5 @@
--- src/scenes/settings.lua
--- Scene impostazioni in stile pergamena (ispirata a Potion Craft)
+-- src/modules/settings.lua
+-- Modulo impostazioni in stile pergamena (ispirata a Potion Craft)
 
 local Settings = {}
 local SettingsState = require("src.core.settings_state")
@@ -73,13 +73,6 @@ local cached_scale = nil
 local function clamp(v, min_v, max_v)
     if v < min_v then return min_v end
     if v > max_v then return max_v end
-    return v
-end
-
-local function wrap_index(v, max_v)
-    if max_v <= 0 then return 1 end
-    if v < 1 then return max_v end
-    if v > max_v then return 1 end
     return v
 end
 
@@ -570,19 +563,21 @@ end
 local function draw_title(layout)
     local center_x = layout.center_x
     local high_contrast = RuntimeUI.high_contrast()
+    local title_face = title_font or love.graphics.getFont()
+    local subtitle_face = subtitle_font or love.graphics.getFont()
 
-    love.graphics.setFont(title_font)
+    love.graphics.setFont(title_face)
     love.graphics.setColor(0.06, 0.04, 0.02, high_contrast and 0.38 or 0.24)
     love.graphics.printf("Scriptorium", center_x - 500 + 3, layout.title_y + 3, 1000, "center")
     love.graphics.setColor(high_contrast and 0.20 or 0.33, high_contrast and 0.11 or 0.21, high_contrast and 0.05 or 0.10, 1)
     love.graphics.printf("Scriptorium", center_x - 500, layout.title_y, 1000, "center")
 
-    love.graphics.setFont(subtitle_font)
+    love.graphics.setFont(subtitle_face)
     local subtitle = (view_mode == "sections") and "Settings" or get_active_tab().label
     love.graphics.setColor(high_contrast and 0.68 or 0.76, high_contrast and 0.50 or 0.62, high_contrast and 0.20 or 0.30, 1)
     love.graphics.printf(subtitle, center_x - 450, layout.subtitle_y, 900, "center")
 
-    local y = layout.subtitle_y + subtitle_font:getHeight() + 8
+    local y = layout.subtitle_y + subtitle_face:getHeight() + 8
     love.graphics.setColor(high_contrast and 0.78 or 0.84, high_contrast and 0.60 or 0.70, high_contrast and 0.22 or 0.36, 0.88)
     love.graphics.rectangle("fill", center_x - 210, y, 180, 2)
     love.graphics.rectangle("fill", center_x + 30, y, 180, 2)
@@ -617,8 +612,9 @@ local function draw_slider_gems(rect, value, selected)
 end
 
 local function draw_sections(layout)
-    love.graphics.setFont(section_font)
-    local font_h = section_font:getHeight()
+    local section_face = section_font or love.graphics.getFont()
+    love.graphics.setFont(section_face)
+    local font_h = section_face:getHeight()
 
     for i, item in ipairs(layout.section_items) do
         local is_selected = (selected_section_entry == i)
@@ -637,7 +633,7 @@ local function draw_sections(layout)
             color = {0.33, 0.20, 0.09, 1}
         end
 
-        local text_w = section_font:getWidth(item.label)
+        local text_w = section_face:getWidth(item.label)
         local tx = item.x + (item.w - text_w) * 0.5
         local ty = item.y + math.floor((item.h - font_h) * 0.5)
 
@@ -649,8 +645,9 @@ local function draw_sections(layout)
 end
 
 local function draw_content(layout)
-    love.graphics.setFont(content_font)
-    local font_h = content_font:getHeight()
+    local content_face = content_font or love.graphics.getFont()
+    love.graphics.setFont(content_face)
+    local font_h = content_face:getHeight()
 
     local controls_count = #layout.controls
     for i, row in ipairs(layout.controls) do
@@ -678,7 +675,7 @@ local function draw_content(layout)
             draw_slider_gems(row.slider_rect, control.value, active)
         else
             local value_text = control_display_value(control)
-            local text_w = content_font:getWidth(value_text)
+            local text_w = content_face:getWidth(value_text)
             local vx = row.value_rect.x + (row.value_rect.w - text_w) * 0.5
             local vy = row.value_rect.y + math.floor((row.value_rect.h - font_h) * 0.5)
             love.graphics.setColor(0.08, 0.05, 0.02, 0.22)
@@ -692,15 +689,16 @@ local function draw_content(layout)
         end
     end
 
-    love.graphics.setFont(action_font)
-    local action_font_h = action_font:getHeight()
+    local action_face = action_font or love.graphics.getFont()
+    love.graphics.setFont(action_face)
+    local action_font_h = action_face:getHeight()
     for i, row in ipairs(layout.actions) do
         local global_index = controls_count + i
         local is_selected = selected_content_index == global_index
         local is_hovered = hovered_id == row.id
         local active = is_selected or is_hovered
         local label = row.action.label
-        local label_w = action_font:getWidth(label)
+        local label_w = action_face:getWidth(label)
         local tx = row.x + (row.w - label_w) * 0.5
         local ty = row.y + math.floor((row.h - action_font_h) * 0.5)
 
@@ -753,79 +751,8 @@ function Settings:draw()
     end
 end
 
-function Settings:keypressed(key)
-    if view_mode == "sections" then
-        local max_entries = #tabs + 1
-        if key == "up" then
-            selected_section_entry = wrap_index(selected_section_entry - 1, max_entries)
-            AudioManager.play_ui("move")
-        elseif key == "down" then
-            selected_section_entry = wrap_index(selected_section_entry + 1, max_entries)
-            AudioManager.play_ui("move")
-        elseif key == "return" or key == "space" then
-            if selected_section_entry <= #tabs then
-                selected_tab = selected_section_entry
-                view_mode = "content"
-                selected_content_index = 1
-                AudioManager.play_ui("confirm")
-            else
-                AudioManager.play_ui("back")
-                leave_to_main_menu()
-            end
-        elseif key == "escape" or key == "backspace" then
-            AudioManager.play_ui("back")
-            leave_to_main_menu()
-        end
-        return
-    end
-
-    local tab = get_active_tab()
-    local total_items = #tab.controls + #content_actions
-
-    if key == "up" then
-        selected_content_index = wrap_index(selected_content_index - 1, total_items)
-        AudioManager.play_ui("move")
-    elseif key == "down" then
-        selected_content_index = wrap_index(selected_content_index + 1, total_items)
-        AudioManager.play_ui("move")
-    elseif key == "left" or key == "right" then
-        if selected_content_index <= #tab.controls then
-            local dir = (key == "right") and 1 or -1
-            local control = tab.controls[selected_content_index]
-            adjust_control(control, dir)
-            if is_audio_control(control) then
-                apply_live_audio_preview()
-            end
-            AudioManager.play_ui("toggle")
-        end
-    elseif key == "return" or key == "space" then
-        if selected_content_index <= #tab.controls then
-            local control = tab.controls[selected_content_index]
-            if control.type == "toggle" then
-                adjust_control(control, 0)
-                if is_audio_control(control) then
-                    apply_live_audio_preview()
-                end
-                AudioManager.play_ui("toggle")
-            elseif control.type == "choice" then
-                adjust_control(control, 1)
-                if is_audio_control(control) then
-                    apply_live_audio_preview()
-                end
-                AudioManager.play_ui("toggle")
-            end
-        else
-            local action_index = selected_content_index - #tab.controls
-            local action = content_actions[action_index]
-            if action then
-                run_action(action.action)
-            end
-        end
-    elseif key == "escape" or key == "backspace" then
-        view_mode = "sections"
-        selected_section_entry = selected_tab
-        AudioManager.play_ui("back")
-    end
+function Settings:keypressed(_key)
+    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function Settings:mousepressed(x, y, button)

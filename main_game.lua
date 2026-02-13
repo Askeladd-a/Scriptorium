@@ -1,18 +1,19 @@
 -- main_game.lua
--- Entry point per il gioco Scriptorium Alchimico
--- Integra il sistema dadi 3D esistente con la logica di gioco
+-- Legacy reference file (non-entrypoint): the active runtime entrypoint is main.lua.
+-- Snapshot storico del bootstrap gioco Scriptorium Alchimico
+-- Conservato per confronto, non usato nel run corrente
 
 -- Carica moduli esistenti
 require("core")
-require("render")
-require("physics")
-require("geometry")
-require("view")
-require("light")
+require("src.engine3d.render")
+require("src.engine3d.physics")
+require("src.engine3d.geometry")
+require("src.engine3d.view")
+require("src.engine3d.light")
 
 -- Carica moduli gioco
-local SceneManager = require("src.core.scene_manager")
-local Scriptorium = require("src.scenes.scriptorium")
+local ModuleManager = require("src.core.module_manager")
+local Scriptorium = require("src.modules.scriptorium")
 
 -- Configurazione board (dal main.lua originale)
 config = {
@@ -78,16 +79,16 @@ function love.load()
         love.math.setRandomSeed(seed)
     end
     
-    -- Registra scene
-    SceneManager.register("scriptorium", Scriptorium)
+    -- Registra moduli
+    ModuleManager.register("scriptorium", Scriptorium)
     
     -- Setup callback roll
     Scriptorium.onRollRequest = function()
         rollAllDice()
     end
     
-    -- Avvia scena
-    SceneManager.switch("scriptorium", "BIFOLIO", seed)
+    -- Avvia modulo
+    ModuleManager.switch("scriptorium", "BIFOLIO", seed)
     
     -- Roll iniziale
     rollAllDice()
@@ -100,8 +101,8 @@ function love.update(dt)
     -- Check se i dadi si sono fermati
     checkDiceSettled(dt)
     
-    -- Update scena
-    SceneManager.update(dt)
+    -- Update modulo
+    ModuleManager.update(dt)
     
     -- Camera/view (dal main.lua originale)
     local dx, dy = love.mouse.delta()
@@ -163,13 +164,13 @@ function love.draw()
     -- Clip area gioco
     love.graphics.setScissor(dice_area_w, 0, w - dice_area_w, h)
     
-    -- Disegna scena (spostata a sinistra per adattarsi)
-    local scene = SceneManager.current
-    if scene and scene.draw then
-        -- Override temporanea dimensioni per la scena
+    -- Disegna modulo (spostato a sinistra per adattarsi)
+    local module = ModuleManager.current
+    if module and module.draw then
+        -- Override temporanea dimensioni per il modulo
         local old_getWidth = love.graphics.getWidth
         love.graphics.getWidth = function() return w - dice_area_w end
-        scene:draw()
+        module:draw()
         love.graphics.getWidth = old_getWidth
     end
     
@@ -204,11 +205,8 @@ function love.draw()
     love.graphics.setLineWidth(1)
 end
 
-function love.keypressed(key, scancode, isrepeat)
-    if key == 'space' then
-        rollAllDice()
-    end
-    SceneManager.keypressed(key, scancode, isrepeat)
+function love.keypressed(_key, _scancode, _isrepeat)
+    -- Mouse-only project: keyboard input intentionally ignored.
 end
 
 function love.mousepressed(x, y, button)
@@ -220,17 +218,17 @@ function love.mousepressed(x, y, button)
             return
         end
     end
-    SceneManager.mousepressed(x, y, button)
+    ModuleManager.mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-    SceneManager.mousereleased(x, y, button)
+    ModuleManager.mousereleased(x, y, button)
 end
 
 function love.wheelmoved(dx, dy)
     if dy > 0 then view.move(1.1) end
     if dy < 0 then view.move(0.91) end
-    SceneManager.wheelmoved(dx, dy)
+    ModuleManager.wheelmoved(dx, dy)
 end
 
 -- ============================================================================
@@ -238,13 +236,14 @@ end
 -- ============================================================================
 
 --- Lancia tutti i dadi
+---@diagnostic disable-next-line: lowercase-global
 function rollAllDice()
     local rnd = (love and love.math and love.math.random) or math.random
     
     diceSettled = false
     diceSettledTimer = 0
     
-    -- Notifica scena
+    -- Notifica modulo
     if Scriptorium then
         Scriptorium.state = "rolling"
         Scriptorium.dice_results = {}
@@ -302,6 +301,7 @@ function rollAllDice()
 end
 
 --- Controlla se i dadi si sono fermati
+---@diagnostic disable-next-line: lowercase-global
 function checkDiceSettled(dt)
     if diceSettled then return end
     
@@ -326,6 +326,7 @@ function checkDiceSettled(dt)
 end
 
 --- Callback quando i dadi si fermano
+---@diagnostic disable-next-line: lowercase-global
 function onDiceSettled()
     local values = readDiceValues()
     log("[Dice] Settled: " .. table.concat(values, ", "))
@@ -337,6 +338,7 @@ function onDiceSettled()
 end
 
 --- Legge i valori delle facce superiori dei dadi
+---@diagnostic disable-next-line: lowercase-global
 function readDiceValues()
     local values = {}
     
@@ -362,6 +364,7 @@ local FACE_TO_PIP = {
 }
 
 --- Legge la faccia superiore di un dado
+---@diagnostic disable-next-line: lowercase-global
 function readDieFace(star)
     -- Le facce del D6 (da geometry.lua)
     -- faces={{1,2,3,4}, {5,6,7,8}, {1,2,6,5},{2,3,7,6},{3,4,8,7},{4,1,5,8}}

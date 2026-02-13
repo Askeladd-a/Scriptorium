@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "LuaJIT",
+  "workspace.checkThirdParty": false,
+  "workspace.ignoreDir": [
+    ".git",
+    "docs",
+    "resources/shaders",
+    "resources/shaders/**"
+  ],
+  "diagnostics.globals": [
+    "love",
+    "config",
+    "dice",
+    "light",
+    "view",
+    "render",
+    "materials",
+    "box",
+    "star",
+    "vector",
+    "rotation",
+    "pretty",
+    "d6",
+    "set_module"
+  ],
+  "diagnostics.groupSeverity": {
+    "strong": "Warning",
+    "strict": "Warning"
+  },
+  "hint.enable": true,
+  "telemetry.enable": false
+}

@@ -1,5 +1,5 @@
--- src/scenes/main_menu.lua
--- Scena menu principale stile "libri impilati" (UI ridisegnata: pulsanti orizzontali)
+-- src/modules/main_menu.lua
+-- Modulo menu principale stile "libri impilati" (UI ridisegnata: pulsanti orizzontali)
 
 local MainMenu = {}
 local AudioManager = require("src.core.audio_manager")
@@ -78,17 +78,7 @@ local modal_timer = 0
 
 local selected = nil
 local hovered = nil -- Indice del pulsante sotto il mouse
-local keyboard_focus = false
 local mouse_has_moved = false
-
-local function first_enabled_index()
-    for i, item in ipairs(menu_items) do
-        if item.enabled then
-            return i
-        end
-    end
-    return 1
-end
 
 local function get_audio_settings()
     local ok, SettingsState = pcall(function() return require("src.core.settings_state") end)
@@ -115,7 +105,6 @@ function MainMenu:enter()
     -- Reset selezione
     selected = nil
     hovered = nil
-    keyboard_focus = false
     mouse_has_moved = false
     log("[MainMenu] enter() called")
     -- Log audio subsystem state
@@ -324,7 +313,7 @@ function MainMenu:draw()
             -- Main text color
             if not item.enabled then
                 love.graphics.setColor(0.45,0.40,0.36,0.9)
-            elseif keyboard_focus and i == selected then
+            elseif i == selected then
                 love.graphics.setColor(high_contrast and 1.0 or 0.98, high_contrast and 0.90 or 0.86, high_contrast and 0.40 or 0.34, 1)
             elseif isHovered then
                 love.graphics.setColor(high_contrast and 1.0 or 0.97, high_contrast and 0.94 or 0.88, high_contrast and 0.72 or 0.6, 1)
@@ -343,7 +332,7 @@ function MainMenu:draw()
             love.graphics.setColor(0,0,0,high_contrast and 0.76 or 0.6); love.graphics.print(text, left_x + 2, y + 2)
             if not item.enabled then
                 love.graphics.setColor(0.45,0.40,0.36,0.9)
-            elseif keyboard_focus and i == selected then
+            elseif i == selected then
                 love.graphics.setColor(high_contrast and 1.0 or 0.98, high_contrast and 0.90 or 0.86, high_contrast and 0.40 or 0.34, 1)
             elseif isHovered then
                 love.graphics.setColor(high_contrast and 1.0 or 0.97, high_contrast and 0.94 or 0.88, high_contrast and 0.72 or 0.6, 1)
@@ -369,38 +358,8 @@ function MainMenu:draw()
     end
 end
 
-function MainMenu:keypressed(key)
-    if key == "up" then
-        keyboard_focus = true
-        if not selected then
-            selected = first_enabled_index()
-        end
-        repeat
-            selected = selected - 1
-            if selected < 1 then selected = #menu_items end
-        until menu_items[selected].enabled
-        AudioManager.play_ui("move")
-    elseif key == "down" then
-        keyboard_focus = true
-        if not selected then
-            selected = first_enabled_index()
-        end
-        repeat
-            selected = selected + 1
-            if selected > #menu_items then selected = 1 end
-        until menu_items[selected].enabled
-        AudioManager.play_ui("move")
-    elseif key == "return" or key == "space" then
-        AudioManager.play_ui("confirm")
-        if hovered and not keyboard_focus then
-            MainMenu:activate(hovered)
-        else
-            if not selected then
-                selected = first_enabled_index()
-            end
-            MainMenu:activate(selected)
-        end
-    end
+function MainMenu:keypressed(_key)
+    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function MainMenu:mousepressed(x, y, button)
@@ -414,7 +373,6 @@ function MainMenu:mousepressed(x, y, button)
                 if item.enabled then
                     selected = i
                     hovered = i
-                    keyboard_focus = false
                     AudioManager.play_ui("confirm")
                     MainMenu:activate(i)
                 end
@@ -433,7 +391,6 @@ function MainMenu:mousepressed(x, y, button)
                 if item.enabled then
                     selected = i
                     hovered = i
-                    keyboard_focus = false
                     AudioManager.play_ui("confirm")
                     MainMenu:activate(i)
                 end
@@ -445,7 +402,6 @@ end
 
 function MainMenu:mousemoved(x, y, dx, dy)
     mouse_has_moved = true
-    keyboard_focus = false
     local prev_hovered = hovered
     hovered = nil
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()

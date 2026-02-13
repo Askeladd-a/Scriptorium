@@ -1,10 +1,10 @@
--- src/scenes/reward.lua
+-- src/modules/reward.lua
 -- Schermata di selezione ricompensa (tool) dopo completamento folio
 
 local RewardUI = require("src.ui.reward")
 local AudioManager = require("src.core.audio_manager")
 
-local RewardScene = {}
+local RewardModule = {}
 
 -- Available tools (inspired by RewardScreen.tsx)
 local AVAILABLE_TOOLS = {
@@ -19,8 +19,19 @@ local AVAILABLE_TOOLS = {
 local selected = 1
 local shuffled = {}
 local run = nil
+local layout_cache = nil
 
-function RewardScene:enter(params)
+local function choose_selected_tool()
+    AudioManager.play_ui("confirm")
+    if run and shuffled[selected] and run.addTool then
+        run:addTool(shuffled[selected])
+    end
+    if _G.set_module then
+        _G.set_module("run", {run = run})
+    end
+end
+
+function RewardModule:enter(params)
     run = params and params.run or nil
     -- Shuffle and pick 3 tools
     shuffled = {}
@@ -31,39 +42,47 @@ function RewardScene:enter(params)
     end
     shuffled = {shuffled[1], shuffled[2], shuffled[3]}
     selected = 1
+    layout_cache = nil
 end
 
-function RewardScene:update(dt)
+function RewardModule:update(dt)
     -- Reserved
 end
 
-function RewardScene:draw()
-    RewardUI.draw(shuffled, selected)
+function RewardModule:draw()
+    layout_cache = RewardUI.draw(shuffled, selected)
 end
 
-function RewardScene:keypressed(key)
-    if key == "left" or key == "a" then
-        selected = math.max(1, selected - 1)
-        AudioManager.play_ui("move")
-    elseif key == "right" or key == "d" then
-        selected = math.min(3, selected + 1)
-        AudioManager.play_ui("move")
-    elseif key == "return" or key == "space" then
-        AudioManager.play_ui("confirm")
-        if run and shuffled[selected] then
-            if run.addTool then
-                run:addTool(shuffled[selected])
-            end
-            if _G.set_module then
-                _G.set_module("run", {run = run})
-            end
+function RewardModule:keypressed(_key)
+    -- Mouse-only module: keyboard input intentionally disabled.
+end
+
+function RewardModule:mousemoved(x, y, _dx, _dy)
+    local layout = layout_cache or RewardUI.getLayout(shuffled)
+    local previous = selected
+    for i, rect in ipairs(layout.cards or {}) do
+        if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+            selected = i
+            break
         end
-    elseif key == "escape" or key == "backspace" then
-        AudioManager.play_ui("back")
-        if _G.set_module then
-            _G.set_module("run", {run = run})
+    end
+    if selected ~= previous then
+        AudioManager.play_ui("hover")
+    end
+end
+
+function RewardModule:mousepressed(x, y, button)
+    if button ~= 1 then
+        return
+    end
+    local layout = layout_cache or RewardUI.getLayout(shuffled)
+    for i, rect in ipairs(layout.cards or {}) do
+        if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+            selected = i
+            choose_selected_tool()
+            return
         end
     end
 end
 
-return RewardScene
+return RewardModule

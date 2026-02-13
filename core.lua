@@ -5,6 +5,7 @@
 --[[prototypes]]
   --clone creates a new table that inherits from base, or marks a table as inherited from base
   --clone uses either base.metatable (if present), or new itself as the metatable
+  ---@diagnostic disable-next-line: lowercase-global
   function clone(base,derived)
     if not derived then derived={} end
     if base.metatable then
@@ -183,6 +184,7 @@ end
 
 -- Simple runtime logging helper: enable by setting _G.VERBOSE_LOGS = true
 _G.VERBOSE_LOGS = _G.VERBOSE_LOGS or false
+---@diagnostic disable-next-line: lowercase-global
 function log(...)
   if _G.VERBOSE_LOGS then
     print(...)

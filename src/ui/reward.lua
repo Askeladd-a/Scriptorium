@@ -26,26 +26,55 @@ local function get_font(px)
     return font_cache[size]
 end
 
----@param tools table list of 3 tools
----@param selected integer selected index (1-3)
-function RewardUI.draw(tools, selected)
+local function build_layout(tool_count)
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    local high_contrast = RuntimeUI.high_contrast()
-    local reduced_motion = RuntimeUI.reduced_animations()
-
     local panel_w = math.min(w - RuntimeUI.sized(36), RuntimeUI.sized(820))
     local panel_h = math.min(h - RuntimeUI.sized(36), RuntimeUI.sized(420))
     local x = math.floor((w - panel_w) * 0.5)
     local y = math.floor((h - panel_h) * 0.5)
-    local radius = RuntimeUI.sized(12)
     local padding = RuntimeUI.sized(24)
     local title_h = RuntimeUI.sized(46)
+    local gap = RuntimeUI.sized(14)
+    local count = math.max(1, tool_count)
+    local row_x = x + padding
+    local row_y = y + title_h + RuntimeUI.sized(18)
+    local row_w = panel_w - padding * 2
+    local row_h = panel_h - title_h - RuntimeUI.sized(36)
+    local card_w = math.max(RuntimeUI.sized(130), math.floor((row_w - gap * (count - 1)) / count))
+    local card_h = row_h
+    local cards = {}
+    for i = 1, count do
+        cards[i] = {
+            x = row_x + (i - 1) * (card_w + gap),
+            y = row_y,
+            w = card_w,
+            h = card_h,
+        }
+    end
+    return {
+        panel = {x = x, y = y, w = panel_w, h = panel_h},
+        cards = cards,
+    }
+end
+
+function RewardUI.getLayout(tools)
+    return build_layout(tools and #tools or 0)
+end
+
+---@param tools table list of 3 tools
+---@param selected integer selected index (1-3)
+function RewardUI.draw(tools, selected)
+    local high_contrast = RuntimeUI.high_contrast()
+    local reduced_motion = RuntimeUI.reduced_animations()
+    local layout = RewardUI.getLayout(tools)
+    local panel = layout.panel
+    local radius = RuntimeUI.sized(12)
 
     love.graphics.setColor(COLORS.panel[1], COLORS.panel[2], COLORS.panel[3], high_contrast and 0.98 or COLORS.panel[4])
-    love.graphics.rectangle("fill", x, y, panel_w, panel_h, radius, radius)
+    love.graphics.rectangle("fill", panel.x, panel.y, panel.w, panel.h, radius, radius)
     love.graphics.setColor(high_contrast and 1.0 or COLORS.border[1], high_contrast and 0.85 or COLORS.border[2], high_contrast and 0.32 or COLORS.border[3], 1)
     love.graphics.setLineWidth(RuntimeUI.sized(3))
-    love.graphics.rectangle("line", x, y, panel_w, panel_h, radius, radius)
+    love.graphics.rectangle("line", panel.x, panel.y, panel.w, panel.h, radius, radius)
     love.graphics.setLineWidth(1)
 
     local previous_font = love.graphics.getFont()
@@ -57,20 +86,14 @@ function RewardUI.draw(tools, selected)
 
     love.graphics.setFont(title_font)
     love.graphics.setColor(high_contrast and 1.0 or COLORS.text[1], high_contrast and 0.96 or COLORS.text[2], high_contrast and 0.86 or COLORS.text[3], 1)
-    love.graphics.printf("Choose a reward", x, y + RuntimeUI.sized(12), panel_w, "center")
-
-    local tool_count = math.max(1, #tools)
-    local gap = RuntimeUI.sized(14)
-    local row_x = x + padding
-    local row_y = y + title_h + RuntimeUI.sized(18)
-    local row_w = panel_w - padding * 2
-    local row_h = panel_h - title_h - RuntimeUI.sized(36)
-    local card_w = math.max(RuntimeUI.sized(130), math.floor((row_w - gap * (tool_count - 1)) / tool_count))
-    local card_h = row_h
+    love.graphics.printf("Choose a reward", panel.x, panel.y + RuntimeUI.sized(12), panel.w, "center")
 
     for i, tool in ipairs(tools) do
-        local cx = row_x + (i - 1) * (card_w + gap)
-        local cy = row_y
+        local card = layout.cards[i]
+        local cx = card.x
+        local cy = card.y
+        local card_w = card.w
+        local card_h = card.h
         local active = (i == selected)
 
         if active and not reduced_motion and love.timer and love.timer.getTime then
@@ -107,6 +130,7 @@ function RewardUI.draw(tools, selected)
     end
 
     love.graphics.setFont(previous_font)
+    return layout
 end
 
 return RewardUI

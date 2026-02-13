@@ -2,12 +2,11 @@
 -- Pattern per elementi del Folio in Scriptorium Alchimico
 -- Ogni elemento ha la propria griglia con vincoli colore/valore
 --
--- Elementi e dimensioni:
---   TEXT      = 2×3 (6 celle)
---   DROPCAPS  = 1×2 (2 celle)
---   BORDERS   = 2×2 (4 celle)
---   CORNERS   = 2×2 (4 celle)
---   MINIATURE = 1×3 (3 celle)
+-- Elementi e dimensioni gameplay correnti:
+--   TEXT      = 4x4 (16 celle)
+--   BORDERS   = 3x4 (12 celle)
+--   MINIATURE = 2x4 (8 celle)
+--   DROPCAPS  = 2x3 (6 celle, "Dropcaps/Corners")
 --
 -- Vincoli:
 --   nil      = nessun vincolo (cella libera)
@@ -45,11 +44,12 @@ end
 -- ══════════════════════════════════════════════════════════════════
 
 M.ELEMENT_CONFIG = {
-    TEXT = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
-    DROPCAPS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
-    BORDERS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
-    CORNERS = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
-    MINIATURE = { rows = M.TILE_ROWS, cols = M.TILE_COLS, cells = M.TILE_ROWS * M.TILE_COLS },
+    TEXT = { rows = 4, cols = 4, cells = 16 },
+    DROPCAPS = { rows = 2, cols = 3, cells = 6 },
+    BORDERS = { rows = 3, cols = 4, cells = 12 },
+    MINIATURE = { rows = 2, cols = 4, cells = 8 },
+    -- Kept for backward compatibility in tooling/debug paths.
+    CORNERS = { rows = 2, cols = 3, cells = 6 },
 }
 
 -- ══════════════════════════════════════════════════════════════════
@@ -406,12 +406,20 @@ end
 ---@param seed? number opzionale
 ---@return table {TEXT=pattern, DROPCAPS=pattern, ...}
 function M.getRandomPatternSet(seed)
-    local elements = {"TEXT", "DROPCAPS", "BORDERS", "CORNERS", "MINIATURE"}
+    local elements = {"TEXT", "DROPCAPS", "BORDERS", "MINIATURE"}
 
     if M.USE_TILE_GENERATOR then
+        local element_options = {}
+        for _, elem in ipairs(elements) do
+            local cfg = M.ELEMENT_CONFIG[elem]
+            if cfg then
+                element_options[elem] = { rows = cfg.rows, cols = cfg.cols }
+            end
+        end
         local generated = TilePatternGenerator.generate_set(seed, elements, {
             rows = M.TILE_ROWS,
             cols = M.TILE_COLS,
+            element_options = element_options,
             seed_mode = M.TILE_GENERATOR_SEED_MODE,
             variations = M.TILE_GENERATOR_VARIATIONS,
         })

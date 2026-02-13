@@ -371,13 +371,14 @@ function Generator.generate_set(seed, elements, options)
     local target_elements = elements or {"TEXT", "DROPCAPS", "BORDERS", "CORNERS", "MINIATURE"}
     local out = {}
     for i, element in ipairs(target_elements) do
+        local per_element = (type(options.element_options) == "table" and options.element_options[element]) or {}
         out[element] = Generator.generate_pattern(element, base_seed + i * 997, {
-            rows = options.rows or DEFAULT_ROWS,
-            cols = options.cols or DEFAULT_COLS,
+            rows = per_element.rows or options.rows or DEFAULT_ROWS,
+            cols = per_element.cols or options.cols or DEFAULT_COLS,
             seed_mode = mode,
             variations = (options.variations ~= nil) and options.variations or Generator.enable_variations,
-            marker_count = options.marker_count,
-            constraint_density = options.constraint_density,
+            marker_count = per_element.marker_count or options.marker_count,
+            constraint_density = per_element.constraint_density or options.constraint_density,
             id = 1000 + i,
         })
     end

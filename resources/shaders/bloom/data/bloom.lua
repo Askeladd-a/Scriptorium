@@ -211,8 +211,8 @@ end
 function BLOOM.BlurDownsample( InputTexture, Buffers, Shader )
 	GL.PushEvent( "Bloom downsample" )
 
-	local Width, Height = 0
-	local PrevWidth, PrevHeight = 0
+	local Width, Height = 0, 0
+	local PrevWidth, PrevHeight = 0, 0
 	local CurrentCanvas = nil
 
 	love.graphics.setShader( Shader )
@@ -261,7 +261,7 @@ end
 function BLOOM.BlurUpsample( DownsampleBuffers, UpsampleBuffers, Shader, Radius )
 	GL.PushEvent( "Bloom upsample" )
 
-	local Width, Height = 0
+	local Width, Height = 0, 0
 	local CurrentCanvas = nil
 	local Levels = #UpsampleBuffers
 	local PreviousTexture = DownsampleBuffers[#DownsampleBuffers]

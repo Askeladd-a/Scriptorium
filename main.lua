@@ -1,91 +1,82 @@
--- main_game.lua
+-- main.lua
 -- Entry point per il gioco Scriptorium Alchimico
 -- Integra il sistema dadi 3D esistente con la logica di gioco
 
 -- Carica moduli esistenti
 require("core")
-require("render")
-require("physics")
-require("geometry")
-require("view")
-require("light")
+require("src.engine3d.render")
+require("src.engine3d.physics")
+require("src.engine3d.geometry")
+require("src.engine3d.view")
+require("src.engine3d.light")
 
 -- Carica moduli gioco (consolidati)
-local Scriptorium = require("src.scenes.scriptorium")
+local Scriptorium = require("src.modules.scriptorium")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
 local SettingsState = require("src.core.settings_state")
 local AudioManager = require("src.core.audio_manager")
 local RuntimeUI = require("src.core.runtime_ui")
+local ResolutionManager = require("src.core.resolution_manager")
 
 -- Module references (popolate in love.load)
 local main_menu_module = nil
 local run_module = nil
 local active_module = nil
+local scriptorium = nil
+local settings_module = nil
+
+-- Forward declarations to keep helper APIs file-local (avoid implicit globals).
+local set_module
+local rollAllDice
+local checkDiceSettled
+local onDiceSettled
+local readDiceValues
+local readDieFace
 
 -- Configurazione board (dal main.lua originale)
 config = {
     boardlight = light.metal
 }
+---@diagnostic disable-next-line: duplicate-set-field
 function config.boardimage(x, y)
-    return "resources/textures/felt.png"
+    return "resources/textures/wood.png"
 end
 
 -- Dadi 3D
 dice = {}
+local DICE_COUNT = 6
 local dice_size = 0.92
-
--- Mapping faccia dado -> valore pip (standard D6)
-local faceToPip = {1, 6, 2, 3, 5, 4}
 
 -- Stato dadi
 local diceSettled = false
 local diceSettledTimer = 0
 local SETTLE_DELAY = 0.3  -- Secondi di stabilità prima di leggere
 
--- Wet Buffer e penalità (MVP)
-local WetBuffer = {}  -- { {element, row, col, die, pigment} }
-local sbavature = 0
-local macchie = 0
-local lastBust = false
-
--- Posizioni "kept" (fuori dal tray, sopra)
-local KEPT_POSITIONS = {
-    {x = -2.5, y = -5.5, z = 1},
-    {x = -0.8, y = -5.5, z = 1},
-    {x =  0.8, y = -5.5, z = 1},
-    {x =  2.5, y = -5.5, z = 1},
-}
-
 -- UI
-local roll_button = {w = 140, h = 40, text = "Reroll", x = 0, y = 0}
 local fps_font = nil
 local fps_font_size = 0
 local last_frame_present = nil
 
--- Stato overlay feedback
-local overlayMessage = nil
-local overlayTimer = 0
-local OVERLAY_DURATION = 1.2
-
 -- Prototype tray layout (screen-relative, no dependency on static background image).
 local DICE_TRAY_LAYOUT = {
-    width_ratio = 0.66,
-    height_ratio = 0.34,
-    max_width = 1180,
+    width_ratio = 0.70,
+    height_ratio = 0.32,
+    max_width = 1240,
     max_height = 440,
-    min_width = 720,
+    min_width = 760,
     min_height = 260,
-    bottom_margin = 6,
-    floor_top_ratio = 0.16,
-    floor_bottom_ratio = 0.88,
-    floor_top_width_ratio = 0.74,
-    floor_bottom_width_ratio = 0.92,
+    bottom_margin = -16,
+    floor_top_ratio = 0.20,
+    floor_bottom_ratio = 0.90,
+    floor_top_width_ratio = 0.68,
+    floor_bottom_width_ratio = 0.93,
 }
 
 -- Visual calibration for the prototype tray overlay.
-local DICE_OVERLAY_SCALE_MULT = 1.04
-local DICE_OVERLAY_CENTER_Y = 0.53
+local DICE_OVERLAY_SCALE_MULT = 1.22
+local DICE_OVERLAY_CENTER_Y = 0.60
+local DICE_OVERLAY_SHADOWS = false
 
 -- Physics box for dice motion inside the tray (world units).
 local DICE_BOX_HALF_X = 7.2
@@ -117,6 +108,11 @@ local function get_tray_rect(window_w, window_h)
         w = tray_w,
         h = tray_h,
     }
+end
+
+_G.get_dice_tray_rect = function()
+    local w, h = love.graphics.getDimensions()
+    return get_tray_rect(w, h)
 end
 
 local function get_tray_floor_polygon(tray)
@@ -253,10 +249,12 @@ local function draw_dice_tray_overlay()
     -- Draw tray floor + 3D wooden frame for prototype mode.
     render.board(config.boardimage, config.boardlight, -box.x, box.x, -box.y, box.y)
 
-    for i = 1, #dice do
-        render.shadow(function(_, action)
-            action()
-        end, dice[i].die, dice[i].star)
+    if DICE_OVERLAY_SHADOWS then
+        for i = 1, #dice do
+            render.shadow(function(_, action)
+                action()
+            end, dice[i].die, dice[i].star)
+        end
     end
 
     render.clear()
@@ -278,6 +276,7 @@ end
 -- LÖVE CALLBACKS
 -- ============================================================================
 
+---@diagnostic disable: duplicate-set-field
 function love.load()
     -- Setup fisica (dal main.lua originale)
     box:set(DICE_BOX_HALF_X, DICE_BOX_HALF_Y, 10, 25, 0.25, 0.75, 0.01)
@@ -285,11 +284,11 @@ function love.load()
     box.angular_damping = 0.12
     box.border_height = 0.9
     
-    -- Crea 4 dadi D6
-    for i = 1, 4 do
-        local col = ((i - 1) % 2) - 0.5
-        local row = math.floor((i - 1) / 2) - 0.5
-        local sx = col * 1.2
+    -- Crea 6 dadi D6
+    for i = 1, DICE_COUNT do
+        local col = ((i - 1) % 3) - 1
+        local row = math.floor((i - 1) / 3) - 0.5
+        local sx = col * 1.0
         local sy = row * 1.0
         
         -- Colori per faccia basati su DiceFaces (pigmenti fallback)
@@ -331,6 +330,16 @@ function love.load()
     -- Carica e applica impostazioni utente persistenti
     SettingsState.load()
     SettingsState.apply()
+    ResolutionManager.init(1920, 1080)
+    _G.get_ui_viewport = function()
+        return ResolutionManager.get_viewport()
+    end
+    _G.to_virtual_ui = function(x, y)
+        return ResolutionManager.to_virtual(x, y)
+    end
+    _G.to_screen_ui = function(x, y)
+        return ResolutionManager.to_screen(x, y)
+    end
     if love.graphics then
         local desired_fps_size = RuntimeUI.sized(14)
         local ok, font = pcall(function()
@@ -352,17 +361,17 @@ function love.load()
     
     -- ...existing code...
     -- Carica moduli UI/gioco
-    main_menu_module = require("src.scenes.main_menu")
-    run_module = require("src.game.run").scene
+    main_menu_module = require("src.modules.main_menu")
+    run_module = require("src.game.run").module
     scriptorium = Scriptorium
-    settings_scene = require("src.scenes.settings")
-    local reward_module = require("src.scenes.reward")
-    local startup_splash_module = require("src.scenes.startup_splash")
+    settings_module = require("src.modules.settings")
+    local reward_module = require("src.modules.reward")
+    local startup_splash_module = require("src.modules.startup_splash")
     local modules = {
         startup_splash = startup_splash_module,
         main_menu = main_menu_module,
         scriptorium = scriptorium,
-        settings = settings_scene,
+        settings = settings_module,
         run = run_module,
         reward = reward_module,
     }
@@ -377,18 +386,23 @@ function love.load()
     -- Imposta il modulo iniziale
     set_module("startup_splash")
     -- Setup callback roll
-    Scriptorium.onRollRequest = function()
-        rollAllDice()
+    Scriptorium.onRollRequest = function(max_dice)
+        rollAllDice(max_dice)
     end
 end
 
+function love.resize(w, h)
+    ResolutionManager.refresh(w, h)
+end
+
 function love.update(dt)
+    ResolutionManager.refresh()
     -- Update physics
     box:update(dt)
     constrain_dice_to_trapezoid()
     -- Check se i dadi si sono fermati
     checkDiceSettled(dt)
-    -- Update scena attiva
+    -- Update modulo attivo
     if active_module and active_module.update then
         active_module:update(dt)
     end
@@ -397,14 +411,6 @@ function love.update(dt)
     if love.mouse.isDown(2) then
         view.raise(dy / 100)
         view.turn(dx / 100)
-    end
-    -- Stato overlay feedback
-    if overlayTimer and overlayTimer > 0 then
-        overlayTimer = overlayTimer - dt
-        if overlayTimer <= 0 then
-            overlayTimer = 0
-            overlayMessage = nil
-        end
     end
 end
 
@@ -453,10 +459,8 @@ function love.draw()
     end
 end
 
-function love.keypressed(key, scancode, isrepeat)
-    if active_module and active_module.keypressed then
-        active_module:keypressed(key, scancode, isrepeat)
-    end
+function love.keypressed(_key, _scancode, _isrepeat)
+    -- Mouse-only project: keyboard input intentionally ignored.
 end
 
 function love.mousepressed(x, y, button)
@@ -470,194 +474,16 @@ function love.mousemoved(x, y, dx, dy, istouch)
         active_module:mousemoved(x, y, dx, dy, istouch)
     end
 end
-
--- Piazzamento temporaneo (Wet Buffer)
-function addToWetBuffer(element, row, col, die, pigment)
-    table.insert(WetBuffer, {element=element, row=row, col=col, die=die, pigment=pigment})
-end
-
--- Commit Wet Buffer (piazzamenti diventano permanenti)
-function commitWetBuffer(folio)
-    for _, p in ipairs(WetBuffer) do
-        folio:placeDie(p.element, p.row, p.col, p.die.value, p.die.color, p.pigment)
-    end
-    WetBuffer = {}
-    lastBust = false
-    overlayMessage = {msg = "COMPLETED!", sub = nil}
-    overlayTimer = OVERLAY_DURATION
-    AudioManager.play_ui("confirm")
-end
-
--- Bust: perdi tutto il Wet Buffer, aggiungi sbavatura
-function bustWetBuffer()
-    WetBuffer = {}
-    sbavature = (sbavature or 0) + 1
-    if sbavature >= 3 then
-        sbavature = 0
-        macchie = (macchie or 0) + 1
-    end
-    lastBust = true
-    overlayMessage = {msg = "BUST!", sub = "You lost all Wet Buffer placements"}
-    overlayTimer = OVERLAY_DURATION
-    AudioManager.play_ui("back")
-end
-
--- Utility: controlla se almeno un dado è piazzabile (vincoli pattern griglia)
-function hasPlacableDice(dice, folio)
-    for i, die in ipairs(dice) do
-        for _, elem in ipairs(folio.ELEMENTS) do
-            local valid = folio:getValidPlacements(elem, die.value, die.color)
-            if #valid > 0 then return true end
-        end
-    end
-    return false
-end
-
--- Esempio loop di turno (MVP, da integrare con input/UI reali)
-function turnLoop(folio, dice)
-    -- 1. Roll
-    -- (già fatto fuori da questa funzione)
-    while true do
-        -- 2. Calcola piazzamenti validi
-        if not hasPlacableDice(dice, folio) then
-            bustWetBuffer()
-            break
-        end
-        -- 3. (Qui: input player per scegliere piazzamenti e pigmenti)
-        -- Per MVP: simuliamo che il player piazza sempre il primo dado valido
-        local placed = false
-        for i, die in ipairs(dice) do
-            for _, elem in ipairs(folio.ELEMENTS) do
-                local valid = folio:getValidPlacements(elem, die.value, die.color)
-                if #valid > 0 then
-                    local cell = valid[1]
-                    addToWetBuffer(elem, cell.row, cell.col, die, "DEFAULT")
-                    table.remove(dice, i)
-                    placed = true
-                    break
-                end
-            end
-            if placed then break end
-        end
-        if not placed then break end
-        -- 4. (Qui: input player PUSH/STOP)
-        -- Per MVP: simuliamo che il player fa STOP se restano <=2 dadi
-        if #dice <= 2 then
-            commitWetBuffer(folio)
-            break
-        else
-            -- PUSH: rolla i dadi rimasti
-            -- (qui dovresti chiamare la tua funzione di roll)
-            -- Per MVP: esci dal loop
-            break
-        end
-    end
-end
-
---- Disegna contenuto pergamena (pattern di tutti gli elementi)
-function drawParchmentContent(x, y, w, h, folio)
-    local UI = require("src.ui")
-    
-    -- Titolo
-    love.graphics.setColor(0.2, 0.15, 0.1)
-    love.graphics.setFont(love.graphics.newFont(22))
-    love.graphics.printf("Folio " .. (Scriptorium.run and Scriptorium.run.current_folio_index or 1), x, y + 8, w, "center")
-    love.graphics.setFont(love.graphics.newFont(14))
-    -- Layout
-    local cell_size = 32
-    local spacing = 6
-    local margin = 24
-    local curr_y = y + 44
-    for idx, elem_name in ipairs(folio.ELEMENTS) do
-        local elem = folio.elements[elem_name]
-        local pattern = elem.pattern
-        local grid_w = pattern.cols * (cell_size + spacing) - spacing
-        local grid_h = pattern.rows * (cell_size + spacing) - spacing
-        local grid_x = x + w/2 - grid_w/2
-        -- Box sezione
-        love.graphics.setColor(0.97, 0.93, 0.82, 0.92)
-        love.graphics.rectangle("fill", x + 8, curr_y - 10, w - 16, grid_h + 54, 8, 8)
-        -- Titolo elemento centrato oro
-        love.graphics.setColor(0.9, 0.75, 0.3)
-        love.graphics.setFont(love.graphics.newFont(16))
-        love.graphics.printf(elem_name:upper(), x, curr_y, w, "center")
-        love.graphics.setFont(love.graphics.newFont(14))
-        -- Label a sinistra
-        love.graphics.setColor(elem.unlocked and {0.2, 0.15, 0.1} or {0.5, 0.45, 0.4})
-        local lock = elem.unlocked and "" or "🔒 "
-        local done = elem.completed and " ✓" or ""
-        love.graphics.print(lock .. elem_name .. done, x + margin, curr_y + 22)
-        -- Griglia
-        UI.drawPatternGrid(folio, elem_name, grid_x, curr_y + 18, cell_size, nil)
-        -- Progress bar sotto la griglia
-        love.graphics.setColor(0.7, 0.65, 0.5)
-        love.graphics.rectangle("fill", grid_x, curr_y + 24 + grid_h, grid_w, 8, 3, 3)
-        love.graphics.setColor(0.2, 0.7, 0.3)
-        local fill = (elem.cells_filled/elem.cells_total) * grid_w
-        love.graphics.rectangle("fill", grid_x, curr_y + 24 + grid_h, fill, 8, 3, 3)
-        love.graphics.setColor(0.2, 0.15, 0.1)
-        love.graphics.printf(string.format("%d/%d", elem.cells_filled, elem.cells_total), grid_x, curr_y + 24 + grid_h - 2, grid_w, "center")
-        -- Separatore tra sezioni
-        curr_y = curr_y + grid_h + 54 + 18
-        if idx < #folio.ELEMENTS then
-            love.graphics.setColor(0.8, 0.75, 0.6, 0.5)
-            love.graphics.rectangle("fill", x + 16, curr_y - 9, w - 32, 3, 2, 2)
-        end
-    end
-end
-
---- Disegna indicatore dadi kept (sopra il tray, compatto)
-function drawKeptDiceIndicator(screen_w, tray_y)
-    local kept_count = 0
-    for i = 1, #dice do
-        if dice[i].kept then kept_count = kept_count + 1 end
-    end
-    
-    if kept_count == 0 then return end
-    
-    -- Label
-    love.graphics.setColor(0.7, 0.65, 0.55)
-    love.graphics.printf("Kept dice:", 0, tray_y - 85, screen_w, "center")
-    
-    -- Dadi kept come quadrati 2D
-    local die_size = 45
-    local spacing = 10
-    local total_w = kept_count * (die_size + spacing) - spacing
-    local start_x = screen_w / 2 - total_w / 2
-    local y = tray_y - 70
-    
-    local idx = 0
-    for i = 1, #dice do
-        if dice[i].kept then
-            local dx = start_x + idx * (die_size + spacing)
-            local value = dice[i].value or readDieFace(dice[i].star)
-            
-            -- Background dado
-            love.graphics.setColor(0.9, 0.85, 0.75)
-            love.graphics.rectangle("fill", dx, y, die_size, die_size, 4, 4)
-            
-            -- Bordo oro (kept)
-            love.graphics.setColor(0.9, 0.75, 0.3)
-            love.graphics.setLineWidth(3)
-            love.graphics.rectangle("line", dx, y, die_size, die_size, 4, 4)
-            love.graphics.setLineWidth(1)
-            
-            -- Valore
-            love.graphics.setColor(0.15, 0.12, 0.1)
-            love.graphics.printf(tostring(value), dx, y + die_size/2 - 10, die_size, "center")
-            
-            idx = idx + 1
-        end
-    end
-end
+---@diagnostic enable: duplicate-set-field
 
 
 -- ============================================================================
 -- DICE FUNCTIONS
 -- ============================================================================
 
---- Lancia solo i dadi NON kept (meccanica Farkle)
-function rollAllDice()
+--- Lancia i dadi non-kept.
+--- `max_dice` consente di rilanciare solo N dadi (es. PUSH=3).
+function rollAllDice(max_dice)
     local rnd = (love and love.math and love.math.random) or math.random
     
     -- Conta dadi da lanciare
@@ -672,11 +498,22 @@ function rollAllDice()
         log("[Dice] No dice available to roll.")
         return
     end
+
+    if max_dice and max_dice > 0 and #to_roll > max_dice then
+        local target = math.max(1, math.floor(max_dice))
+        local selected = {}
+        while #selected < target and #to_roll > 0 do
+            local at = math.floor(rnd() * #to_roll) + 1
+            selected[#selected + 1] = to_roll[at]
+            table.remove(to_roll, at)
+        end
+        to_roll = selected
+    end
     
     diceSettled = false
     diceSettledTimer = 0
     
-    -- Notifica scena
+    -- Notifica modulo
     if Scriptorium then
         Scriptorium.state = "rolling"
     end
@@ -749,70 +586,6 @@ function rollAllDice()
     log("[Dice] Rolled " .. #to_roll .. " dice")
 end
 
---- Rilascia tutti i dadi (reset kept per nuovo turno)
-function releaseAllDice()
-    for i = 1, #dice do
-        dice[i].kept = false
-        dice[i].value = nil
-    end
-end
-
---- Toggle stato kept di un dado
----@param die_index number Indice del dado
-function toggleDieKept(die_index)
-    if die_index < 1 or die_index > #dice then return end
-    dice[die_index].kept = not dice[die_index].kept
-    
-    -- Salva valore se kept
-        if dice[die_index].kept then
-        dice[die_index].value = readDieFace(dice[die_index].star)
-        log("[Dice] Die " .. die_index .. " kept (value " .. dice[die_index].value .. ")")
-    else
-        log("[Dice] Die " .. die_index .. " released")
-    end
-    AudioManager.play_ui("toggle")
-end
-
---- Trova il dado sotto le coordinate mouse (nel tray 3D)
----@param mx number Mouse X
----@param my number Mouse Y
----@return number|nil Indice dado o nil
-function findDieAtPosition(mx, my)
-    local w = love.graphics.getWidth()
-    local h = love.graphics.getHeight()
-    
-    -- Parametri tray (devono matchare love.draw)
-    local tray_h = h * 0.38
-    local tray_y = h - tray_h
-    local tray_cx = w / 2
-    local tray_cy = tray_y + tray_h / 2
-    local scale = math.min(w, tray_h) / 12
-    
-    -- Converti coordinate mouse a coordinate mondo
-    local world_x = (mx - tray_cx) / scale
-    local world_y = (my - tray_cy) / scale
-    
-    -- Trova dado più vicino (distanza 2D proiettata)
-    local best_die = nil
-    local best_dist = 1.5  -- Raggio di click
-    
-    for i = 1, #dice do
-        if not dice[i].kept then  -- Solo dadi nel tray
-            local pos = dice[i].star.position
-            local dx = pos[1] - world_x
-            local dy = pos[2] - world_y
-            local dist = math.sqrt(dx*dx + dy*dy)
-            
-            if dist < best_dist then
-                best_dist = dist
-                best_die = i
-            end
-        end
-    end
-    
-    return best_die
-end
-
 --- Controlla se i dadi si sono fermati
 function checkDiceSettled(dt)
     if diceSettled then return end
@@ -843,7 +616,7 @@ function onDiceSettled()
     log("[Dice] Settled: " .. table.concat(values, ", "))
     AudioManager.play_ui("move")
     
-    -- Notifica scena
+    -- Notifica modulo
     if Scriptorium.onDiceSettled then
         Scriptorium:onDiceSettled(values)
     end
