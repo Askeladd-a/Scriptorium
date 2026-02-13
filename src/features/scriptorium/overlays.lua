@@ -80,7 +80,7 @@ function Overlays.new(deps)
             y = box_y + RuntimeUI.sized(18),
             w = box_w,
             h = RuntimeUI.sized(36),
-        }, get_font(34, true), {0.96, 0.86, 0.60, 1})
+        }, get_font(34, false), {0.96, 0.86, 0.60, 1})
 
         draw_text_center("These rules stay active for all folios in the run.", {
             x = box_x + RuntimeUI.sized(20),
@@ -115,7 +115,7 @@ function Overlays.new(deps)
                 y = cy + RuntimeUI.sized(8),
                 w = card_w,
                 h = RuntimeUI.sized(22),
-            }, get_font(16, true), {0.95, 0.84, 0.58, 1})
+            }, get_font(16, false), {0.95, 0.84, 0.58, 1})
 
             local card_name = (entry.card and entry.card.name) or "-"
             draw_text_center(card_name, {
@@ -123,7 +123,7 @@ function Overlays.new(deps)
                 y = cy + RuntimeUI.sized(34),
                 w = card_w - RuntimeUI.sized(16),
                 h = RuntimeUI.sized(42),
-            }, get_font(18, true), {0.96, 0.92, 0.84, 1})
+            }, get_font(18, false), {0.96, 0.92, 0.84, 1})
 
             love.graphics.setColor(0.62, 0.46, 0.30, 0.42)
             love.graphics.line(cx + RuntimeUI.sized(10), cy + RuntimeUI.sized(82), cx + card_w - RuntimeUI.sized(10), cy + RuntimeUI.sized(82))

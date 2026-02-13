@@ -1,5 +1,5 @@
 
-local FolioModule = require("src.domain.folio.model")
+local FolioModule = require("src.gameplay.folio.model")
 local Folio = FolioModule.Folio or FolioModule
 local RuntimeUI = require("src.core.runtime_ui")
 local MVPDecks = require("src.content.mvp_decks")

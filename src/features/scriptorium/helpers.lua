@@ -136,10 +136,15 @@ end
 
 function Helpers.draw_text_center(text, rect, font, color)
     love.graphics.setFont(font)
+    local font_h = font:getHeight()
+    local draw_y = rect.y
+    if rect.h and rect.h > font_h then
+        draw_y = rect.y + math.floor((rect.h - font_h) * 0.5)
+    end
     love.graphics.setColor(0, 0, 0, 0.45)
-    love.graphics.printf(text, rect.x + 1, rect.y + 1, rect.w, "center")
+    love.graphics.printf(text, rect.x + 1, draw_y + 1, rect.w, "center")
     love.graphics.setColor(color[1], color[2], color[3], color[4] or 1)
-    love.graphics.printf(text, rect.x, rect.y, rect.w, "center")
+    love.graphics.printf(text, rect.x, draw_y, rect.w, "center")
 end
 
 function Helpers.get_remaining_dice_count(results)

@@ -5,7 +5,7 @@ if type(_G.log) ~= "function" then
     end
 end
 
-local Folio = require("src.domain.folio.model")
+local Folio = require("src.gameplay.folio.model")
 
 local function assert_true(value, message)
     if not value then

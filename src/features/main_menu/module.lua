@@ -7,6 +7,8 @@ local menu_font = nil
 local menu_font_size = 0
 local music_play_attempted = false
 local menu_bg = nil
+local MENU_FONT_PRIMARY = "resources/font/EagleLake-Regular.ttf"
+local MENU_FONT_FALLBACK = "resources/font/ManuskriptGothischUNZ1A.ttf"
 
 local MENU_REF_W = 1536
 local MENU_REF_H = 1024
@@ -111,10 +113,9 @@ function MainMenu:enter()
     local desired_font_size = RuntimeUI.sized(19)
     if not menu_font or menu_font_size ~= desired_font_size then
         local candidates = {
-            "resources/font/Manuskript Gothisch UNZ1A.ttf",
-            "resources/font/Manuskript.ttf",
-            "resources/font/UnifrakturMaguntia.ttf",
-            "resources/font/EagleLake-Regular.ttf",
+            MENU_FONT_PRIMARY,
+            MENU_FONT_FALLBACK,
+            "resources/font/UnifrakturMaguntia-Regular.ttf",
         }
         for _, fname in ipairs(candidates) do
             if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(fname) then

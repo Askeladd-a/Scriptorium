@@ -352,7 +352,7 @@ function love.load()
     view.cos_yaw, view.sin_yaw = math.cos(view.yaw), math.sin(view.yaw)
     
     main_menu_module = require("src.features.main_menu.module")
-    run_module = require("src.domain.run.model").module
+    run_module = require("src.gameplay.run.model").module
     scriptorium = Scriptorium
     settings_module = require("src.features.settings.module")
     local reward_module = require("src.features.reward.module")

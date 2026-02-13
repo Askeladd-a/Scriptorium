@@ -128,7 +128,6 @@ local function ensure_assets()
     if not title_font then
         title_font = load_font({
             "resources/font/ManuskriptGothischUNZ1A.ttf",
-            "resources/font/UnifrakturMaguntia-Regular.ttf",
             "resources/font/EagleLake-Regular.ttf",
         }, RuntimeUI.sized(94))
     end
@@ -136,28 +135,28 @@ local function ensure_assets()
     if not subtitle_font then
         subtitle_font = load_font({
             "resources/font/EagleLake-Regular.ttf",
-            "resources/font/UnifrakturMaguntia-Regular.ttf",
+            "resources/font/ManuskriptGothischUNZ1A.ttf",
         }, RuntimeUI.sized(50))
     end
 
     if not section_font then
         section_font = load_font({
             "resources/font/EagleLake-Regular.ttf",
-            "resources/font/UnifrakturMaguntia-Regular.ttf",
+            "resources/font/ManuskriptGothischUNZ1A.ttf",
         }, RuntimeUI.sized(40))
     end
 
     if not content_font then
         content_font = load_font({
             "resources/font/EagleLake-Regular.ttf",
-            "resources/font/UnifrakturMaguntia-Regular.ttf",
+            "resources/font/ManuskriptGothischUNZ1A.ttf",
         }, RuntimeUI.sized(32))
     end
 
     if not action_font then
         action_font = load_font({
-            "resources/font/UnifrakturMaguntia-Regular.ttf",
             "resources/font/EagleLake-Regular.ttf",
+            "resources/font/ManuskriptGothischUNZ1A.ttf",
         }, RuntimeUI.sized(38))
     end
 end

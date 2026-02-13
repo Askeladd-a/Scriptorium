@@ -1,5 +1,5 @@
 
-local Run = require("src.domain.run.model").Run
+local Run = require("src.gameplay.run.model").Run
 local RuntimeUI = require("src.core.runtime_ui")
 local ResolutionManager = require("src.core.resolution_manager")
 local Helpers = require("src.features.scriptorium.helpers")
@@ -30,10 +30,13 @@ local Scriptorium = {
 local BG_PATH = "resources/ui/game.png"
 local PROTOTYPE_NO_BACKGROUND = true
 local TILE_DIR = "resources/tiles"
-local MENU_FONT_CANDIDATES = {
+local UPPERCASE_FONT_CANDIDATES = {
     "resources/font/ManuskriptGothischUNZ1A.ttf",
     "resources/font/UnifrakturMaguntia-Regular.ttf",
+}
+local LOWERCASE_FONT_CANDIDATES = {
     "resources/font/EagleLake-Regular.ttf",
+    "resources/font/UnifrakturMaguntia-Regular.ttf",
 }
 
 local REF_W = 1536
@@ -164,16 +167,15 @@ local function get_font(px, decorative)
     end
 
     local selected = nil
-    if decorative then
-        for _, path in ipairs(MENU_FONT_CANDIDATES) do
-            if love.filesystem.getInfo(path) then
-                local ok, font = pcall(function()
-                    return love.graphics.newFont(path, size)
-                end)
-                if ok and font then
-                    selected = font
-                    break
-                end
+    local candidates = decorative and UPPERCASE_FONT_CANDIDATES or LOWERCASE_FONT_CANDIDATES
+    for _, path in ipairs(candidates) do
+        if love.filesystem.getInfo(path) then
+            local ok, font = pcall(function()
+                return love.graphics.newFont(path, size)
+            end)
+            if ok and font then
+                selected = font
+                break
             end
         end
     end
@@ -459,7 +461,7 @@ function Scriptorium:drawLegendPanel(bg, high_contrast)
     love.graphics.rectangle("line", panel.x, panel.y, panel.w, panel.h, 10, 10)
     love.graphics.setLineWidth(1)
 
-    local title_font = get_font(16, true)
+    local title_font = get_font(16, false)
     local body_font = get_font(RuntimeUI.big_text() and 13 or 12, false)
     draw_text_center("Constraints", {x = panel.x, y = panel.y + RuntimeUI.sized(10), w = panel.w, h = RuntimeUI.sized(20)}, title_font, {0.95, 0.82, 0.52, 1})
 
@@ -600,7 +602,7 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
         w = rect.w,
         h = RuntimeUI.sized(18),
     }
-    draw_text_center(zone.title, title_rect, get_font(15, true), {0.70, 0.51, 0.30, 1})
+    draw_text_center(zone.title, title_rect, get_font(15, false), {0.70, 0.51, 0.30, 1})
 
     local rows = elem.pattern.rows or 4
     local cols = elem.pattern.cols or 5
@@ -774,7 +776,7 @@ function Scriptorium:drawGridPanel(bg, def, high_contrast)
     love.graphics.setLineWidth(1)
     love.graphics.rectangle("line", panel.x, panel.y, panel.w, panel.h, 4, 4)
 
-    local title_font = get_font(13, true)
+    local title_font = get_font(13, false)
     local tab_w = clamp(
         title_font:getWidth(def.title) + RuntimeUI.sized(22),
         RuntimeUI.sized(110),
@@ -882,7 +884,7 @@ function Scriptorium:drawOverviewCard(bg, def, high_contrast)
     love.graphics.setLineWidth(1)
     love.graphics.rectangle("line", panel.x, panel.y, panel.w, panel.h, 8, 8)
 
-    local title_font = get_font(14, true)
+    local title_font = get_font(14, false)
     local tab_w = clamp(
         title_font:getWidth(def.title) + RuntimeUI.sized(24),
         RuntimeUI.sized(120),
@@ -905,7 +907,7 @@ function Scriptorium:drawOverviewCard(bg, def, high_contrast)
         y = panel.y + RuntimeUI.sized(52),
         w = panel.w,
         h = RuntimeUI.sized(22),
-    }, get_font(16, true), {0.93, 0.88, 0.78, 1})
+    }, get_font(16, false), {0.93, 0.88, 0.78, 1})
 
     local filled, total = get_section_progress(elem)
     local ratio = total > 0 and (filled / total) or 0
@@ -998,7 +1000,7 @@ function Scriptorium:drawZoomHeader(zoom_panel, high_contrast)
     love.graphics.rectangle("fill", back_rect.x, back_rect.y, back_rect.w, back_rect.h, 5, 5)
     love.graphics.setColor(0.72, 0.55, 0.35, 0.66)
     love.graphics.rectangle("line", back_rect.x, back_rect.y, back_rect.w, back_rect.h, 5, 5)
-    draw_text_center("Back to overview", back_rect, get_font(14, true), {0.96, 0.90, 0.80, 1})
+    draw_text_center("Back to overview", back_rect, get_font(14, false), {0.96, 0.90, 0.80, 1})
 
     local folio = self.run and self.run.current_folio
     local elem = folio and folio.elements[zoom_panel.element] or nil

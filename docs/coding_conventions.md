@@ -31,9 +31,9 @@ These rules apply to `main.lua`, `core.lua`, and everything under `src/`.
 - Keep modules focused:
   - `src/features/*` for gameplay/UI feature slices (main menu, settings, scriptorium, reward).
   - `src/features/<feature>/*` for internal split (`module`, `actions`, `layout`, `hud`, `overlays`, ...).
-  - `src/domain/*` for gameplay domain models and rules (`folio`, `run`, turn logic, scoring).
+  - `src/gameplay/*` for gameplay models and rules (`folio`, `run`, turn logic, scoring).
   - `src/core/*` for engine/runtime plumbing.
-- Avoid duplicated domain classes across files (single source of truth).
+- Avoid duplicated gameplay classes across files (single source of truth).
 
 ## Formatting
 

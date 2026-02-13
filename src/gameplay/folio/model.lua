@@ -1,7 +1,7 @@
 
 local Patterns = require("src.content.patterns")
 local MVPDecks = require("src.content.mvp_decks")
-local FolioTurn = require("src.domain.folio.turn")
+local FolioTurn = require("src.gameplay.folio.turn")
 
 local Folio = {}
 Folio.__index = Folio
