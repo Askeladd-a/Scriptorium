@@ -5,11 +5,8 @@
   "workspace.ignoreDir": [
     ".git",
     "docs",
-    "legacy",
     "resources/shaders",
-    "resources/shaders/**",
-    "legacy/main_game.lua",
-    "**/legacy/main_game.lua"
+    "resources/shaders/**"
   ],
   "diagnostics.globals": [
     "love",

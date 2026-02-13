@@ -37,7 +37,6 @@ exclude_files = {
     "**/main_backup.lua",
     "main_game.lua",
     "**/main_game.lua",
-    "legacy/**",
     "docs/**",
     "resources/**",
     "third_party/**",
