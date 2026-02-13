@@ -1,32 +1,17 @@
-
-local Patterns = require("src.content.patterns")
-local MVPDecks = require("src.content.mvp_decks")
 local FolioTurn = require("src.gameplay.folio.turn")
+local WindowPatterns = require("src.gameplay.folio.window_patterns")
 
 local Folio = {}
 Folio.__index = Folio
 
-Folio.ELEMENTS = {"TEXT", "DROPCAPS", "BORDERS", "MINIATURE"}
+Folio.ELEMENTS = {"TEXT"}
 
 Folio.BONUS = {
-    TEXT = {coins = 5},
-    DROPCAPS = {coins = 3, shield = 1},
-    BORDERS = {reputation = 1},
-    MINIATURE = {coins = 10, reputation = 2},
+    TEXT = {coins = 20, reputation = 1},
 }
 
-local TEXT_ALLOWED_COLORS = {
-    NERO = true,
-    MARRONE = true,
-    ROSSO = true,
-}
-
-local BORDER_COLOR_PAIRS = {
-    {"ROSSO", "BLU"},
-    {"VERDE", "BLU"},
-    {"MARRONE", "VERDE"},
-    {"NERO", "ROSSO"},
-}
+local GRID_ROWS = 4
+local GRID_COLS = 5
 
 local VALUE_TO_COLOR = {
     [1] = "MARRONE",
@@ -37,80 +22,161 @@ local VALUE_TO_COLOR = {
     [6] = "GIALLO",
 }
 
-local function get_border_parity(seed)
-    local n = math.floor(tonumber(seed) or os.time())
-    if (n % 2) == 0 then
-        return "EVEN"
-    end
-    return "ODD"
+local COLOR_ALIASES = {
+    RED = "ROSSO",
+    BLUE = "BLU",
+    GREEN = "VERDE",
+    YELLOW = "GIALLO",
+    PURPLE = "VIOLA",
+    BLACK = "NERO",
+    BROWN = "MARRONE",
+    WHITE = "BIANCO",
+}
+
+local function random_int(min_v, max_v)
+    local rnd = (love and love.math and love.math.random) or math.random
+    return rnd(min_v, max_v)
 end
 
----@param folio_set_type string Folio set type (BIFOLIO, DUERNO, etc.)
----@param seed? number Seed for reproducible pattern selection
----@param run_setup? table Run card/effect setup
----@return table Folio instance
+local function row_col_to_index(pattern, row, col)
+    return (row - 1) * pattern.cols + col
+end
+
+local function index_to_row_col(pattern, index)
+    local row = math.floor((index - 1) / pattern.cols) + 1
+    local col = ((index - 1) % pattern.cols) + 1
+    return row, col
+end
+
+local function shallow_copy_array(values)
+    local out = {}
+    for i = 1, #values do
+        out[i] = values[i]
+    end
+    return out
+end
+
+local function normalize_color_key(color)
+    if type(color) ~= "string" then
+        return nil
+    end
+    local key = color:upper()
+    return COLOR_ALIASES[key] or key
+end
+
+local function normalize_constraint(constraint)
+    local numeric = tonumber(constraint)
+    if numeric then
+        numeric = math.floor(numeric)
+        if numeric >= 1 and numeric <= 6 then
+            return numeric
+        end
+        return nil
+    end
+    return normalize_color_key(constraint)
+end
+
+local function build_ink_bag(pattern)
+    local set = {}
+    local bag = {}
+    local common = WindowPatterns.getCommonColors()
+
+    for _, c in ipairs(pattern.grid or {}) do
+        if type(c) == "string" then
+            local key = normalize_color_key(c)
+            if key and not set[key] then
+                set[key] = true
+                bag[#bag + 1] = key
+            end
+        end
+    end
+
+    for _, c in ipairs(common) do
+        if #bag >= 3 then
+            break
+        end
+        if not set[c] then
+            set[c] = true
+            bag[#bag + 1] = c
+        end
+    end
+
+    return bag
+end
+
+local function get_pattern_from_windows(seed)
+    local picked = WindowPatterns.pick(seed)
+    picked.rows = GRID_ROWS
+    picked.cols = GRID_COLS
+    for i = 1, GRID_ROWS * GRID_COLS do
+        picked.grid[i] = normalize_constraint(picked.grid[i])
+    end
+    return picked
+end
+
+---@param folio_set_type string
+---@param seed? number
+---@param run_setup? table
+---@return table
 function Folio.new(folio_set_type, seed, run_setup)
     local self = setmetatable({}, Folio)
-    
-    self.folio_set = folio_set_type or "BIFOLIO"
-    self.seed = seed or os.time()
 
-    run_setup = run_setup or MVPDecks.drawRunSetup(self.seed + 77)
-    self.run_setup = run_setup
-    self.rule_cards = run_setup.cards or {}
-    self.rule_effects = run_setup.effects or {}
-    self.border_parity = self.rule_effects.force_borders_parity or get_border_parity(self.seed)
-    
-    local pattern_set = Patterns.getRandomPatternSet(self.seed)
-    
-    self.elements = {}
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        local pattern = pattern_set[elem]
-        local total_cells = pattern.rows * pattern.cols
-        
-        self.elements[elem] = {
+    self.folio_set = folio_set_type or "BIFOLIO"
+    self.seed = tonumber(seed) or os.time()
+    self.run_setup = run_setup or {cards = {}, effects = {}}
+    self.rule_cards = self.run_setup.cards or {}
+    self.rule_effects = self.run_setup.effects or {}
+
+    self.objective = {
+        kind = "fill_cells",
+        target = 15,
+    }
+
+    local pattern = get_pattern_from_windows(self.seed)
+    local total_cells = (pattern.rows or GRID_ROWS) * (pattern.cols or GRID_COLS)
+
+    self.elements = {
+        TEXT = {
             pattern = pattern,
             placed = {},
             wet = {},
+            stained = {},
             cells_filled = 0,
             cells_total = total_cells,
-            unlocked = (elem == "TEXT"),
+            unlocked = true,
             completed = false,
-            motif_pairs = (elem == "BORDERS") and {} or nil,
-        }
-        
-        for i = 1, total_cells do
-            self.elements[elem].placed[i] = nil
-        end
+        },
+    }
+
+    for i = 1, total_cells do
+        self.elements.TEXT.placed[i] = nil
+        self.elements.TEXT.wet[i] = nil
+        self.elements.TEXT.stained[i] = nil
     end
-    
+
+    self.active_element = "TEXT"
+    self.ink_bag = build_ink_bag(pattern)
+
     self.stain_count = 0
     self.stain_threshold = self:getStainThreshold()
-    self.shield = 0
+    self.busted = false
 
     self.wet_buffer = {}
     self.turn_risk = 0
     self.turn_pushes = 0
-    self.turn_flags = {
-        over_four = false,
-        preparation_used = false,
-        double_awarded = false,
-    }
-    self.push_risk_enabled = false
-    self.preparation_guard = (self.rule_effects.tool_bonus_guard or 0)
-    self.first_stop_done = false
-    self.tool_uses_left = (self.rule_cards.tool and self.rule_cards.tool.uses_per_folio) or 0
-    self.seals = 0
+    self.turn_flags = {}
+    self.turn_count = 0
+    self.bust_count = 0
+    self.turn_palette = nil
 
     self.quality = 0
-    self.section_stains = {}
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        self.section_stains[elem] = 0
-    end
-    
-    self.busted = false
     self.completed = false
-    
+
+    self.shield = 0
+    self.preparation_guard = 0
+    self.tool_uses_left = 0
+    self.seals = 0
+
     return self
 end
 
@@ -123,656 +189,84 @@ function Folio:getStainThreshold()
         QUINTERNO = 7,
         SESTERNO = 8,
     }
-    return thresholds[self.folio_set] or 7
+    return thresholds[self.folio_set] or 6
 end
 
-function Folio:_getEffectivePlacement(elem, index)
-    if elem.wet and elem.wet[index] then
-        return elem.wet[index]
-    end
-    return elem.placed[index]
+function Folio:getPatternName()
+    local elem = self.elements[self.active_element]
+    return elem and elem.pattern and elem.pattern.name or "Window"
 end
 
-function Folio:_countEffectiveFilledInRow(elem, row)
-    local count = 0
-    for col = 1, elem.pattern.cols do
-        local index = Patterns.rowColToIndex(elem.pattern, row, col)
-        if self:_getEffectivePlacement(elem, index) then
-            count = count + 1
-        end
-    end
-    return count
+function Folio:getPatternToken()
+    local elem = self.elements[self.active_element]
+    return elem and elem.pattern and (elem.pattern.token or 0) or 0
 end
 
-function Folio:_getTextCurrentRow(elem)
-    local rows = elem.pattern.rows
-    local cols = elem.pattern.cols
-    local threshold = math.ceil(cols * 0.75)
-    local current = 1
-
-    for row = 1, rows - 1 do
-        local filled = self:_countEffectiveFilledInRow(elem, row)
-        if filled >= threshold then
-            current = row + 1
-        else
-            break
-        end
-    end
-
-    return current
+function Folio:getObjectiveProgress()
+    local elem = self.elements[self.active_element]
+    local filled = elem and (elem.cells_filled or 0) or 0
+    local target = self.objective and self.objective.target or 15
+    return filled, target
 end
 
-function Folio:_getBorderMotifPos(pattern, row, col)
-    if pattern.rows == 3 and pattern.cols == 4 then
-        return col, row
-    end
-
-    local index = Patterns.rowColToIndex(pattern, row, col)
-    local motif = math.floor((index - 1) / 3) + 1
-    local pos = ((index - 1) % 3) + 1
-    return motif, pos
+function Folio:_resolveElement(element)
+    local key = element or self.active_element
+    local elem = self.elements[key]
+    return key, elem
 end
 
-function Folio:_getBorderPairForColor(color)
-    for _, pair in ipairs(BORDER_COLOR_PAIRS) do
-        if color == pair[1] or color == pair[2] then
-            return {pair[1], pair[2]}
-        end
+function Folio:_normalizePlacementColor(dice_value, dice_color)
+    local color = normalize_color_key(dice_color)
+    if color then
+        return color
     end
-    local fallback = BORDER_COLOR_PAIRS[1]
-    return {fallback[1], fallback[2]}
+    return VALUE_TO_COLOR[dice_value]
 end
 
-function Folio:_getBorderMotifColors(elem, motif, candidate_pos, candidate_color)
-    local pattern = elem.pattern
-    local colors = {nil, nil, nil}
-    for row = 1, pattern.rows do
-        for col = 1, pattern.cols do
-            local m, pos = self:_getBorderMotifPos(pattern, row, col)
-            if m == motif and pos >= 1 and pos <= 3 then
-                local idx = Patterns.rowColToIndex(pattern, row, col)
-                local placed = self:_getEffectivePlacement(elem, idx)
-                if placed then
-                    colors[pos] = placed.color
-                end
-            end
-        end
-    end
-    if candidate_pos and candidate_pos >= 1 and candidate_pos <= 3 then
-        colors[candidate_pos] = candidate_color
-    end
-    return colors
-end
-
-local function border_alternation_valid(pair, colors)
-    local a = pair[1]
-    local b = pair[2]
-    local valid_aba = true
-    local valid_bab = true
-
-    for pos = 1, 3 do
-        local c = colors[pos]
-        if c and c ~= "GIALLO" then
-            local expected_aba = (pos % 2 == 1) and a or b
-            local expected_bab = (pos % 2 == 1) and b or a
-            if c ~= expected_aba then valid_aba = false end
-            if c ~= expected_bab then valid_bab = false end
-        end
-    end
-
-    return valid_aba or valid_bab
-end
-
-function Folio:_validateSectionRules(element, row, col, dice_value, dice_color)
-    local elem = self.elements[element]
-    local meta = {
-        border_break = false,
-        border_motif = nil,
-        border_pair = nil,
-        is_gold = (dice_color == "GIALLO" or dice_value == 6),
-    }
-
-    if self.rule_effects and self.rule_effects.simple_sections then
-        if element == "TEXT" then
-            if dice_value < 1 or dice_value > 3 then
-                return false, "Text accepts only 1-3", meta
-            end
-            return true, nil, meta
-        end
-
-        if element == "DROPCAPS" then
-            if dice_value < 4 or dice_value > 6 then
-                return false, "Dropcaps accepts only 4-6", meta
-            end
-            return true, nil, meta
-        end
-
-        if element == "BORDERS" then
-            local parity_even = (self.border_parity == "EVEN")
-            local is_even = (dice_value % 2) == 0
-            if parity_even and not is_even then
-                return false, "Borders accepts only even values in this folio", meta
-            end
-            if (not parity_even) and is_even then
-                return false, "Borders accepts only odd values in this folio", meta
-            end
-            return true, nil, meta
-        end
-
-        return true, nil, meta
-    end
-
-    if element == "TEXT" then
-        if not TEXT_ALLOWED_COLORS[dice_color] then
-            return false, "Text allows only Nero, Marrone, Rosso", meta
-        end
-        local current_row = self:_getTextCurrentRow(elem)
-        if row ~= current_row then
-            return false, string.format("Text row %d locked (current row: %d)", row, current_row), meta
-        end
-        return true, nil, meta
-    end
-
-    if element == "BORDERS" then
-        local motif, pos = self:_getBorderMotifPos(elem.pattern, row, col)
-        meta.border_motif = motif
-
-        local pair = elem.motif_pairs[motif]
-        if not pair then
-            pair = self:_getBorderPairForColor(dice_color)
-            meta.border_pair = {pair[1], pair[2]}
-        end
-
-        local colors = self:_getBorderMotifColors(elem, motif, pos, dice_color)
-        if not border_alternation_valid(pair, colors) then
-            meta.border_break = true
-        end
-        return true, nil, meta
-    end
-
-    if element == "MINIATURE" then
-        if meta.is_gold then
-            local gold_count = 0
-            for i = 1, elem.cells_total do
-                local placed = self:_getEffectivePlacement(elem, i)
-                if placed and placed.color == "GIALLO" then
-                    gold_count = gold_count + 1
-                end
-            end
-            if gold_count >= 1 then
-                return false, "Miniature allows only one gold die", meta
-            end
-        end
-        return true, nil, meta
-    end
-
-    return true, nil, meta
-end
-
-function Folio:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
-    local elem = self.elements[element]
-    if not elem then
-        return false, "Invalid element", nil
-    end
-
-    local color = dice_color or VALUE_TO_COLOR[dice_value]
-    if not color then
-        return false, "Invalid die color", nil
-    end
-
-    local forbidden = self.rule_effects and self.rule_effects.forbid_colors or nil
-    if forbidden and forbidden[color] then
-        return false, string.format("%s is forbidden in this commission", tostring(color)), nil
-    end
-
-    if not elem.unlocked then
-        return false, "Locked", nil
-    end
-
-    if elem.completed then
-        return false, "Already completed", nil
-    end
-
-    local pattern = elem.pattern
-    if row < 1 or row > pattern.rows or col < 1 or col > pattern.cols then
-        return false, "Out of bounds", nil
-    end
-
-    local index = Patterns.rowColToIndex(pattern, row, col)
-    if elem.placed[index] or elem.wet[index] then
-        return false, "Occupied", nil
-    end
-
-    if not (self.rule_effects and self.rule_effects.ignore_pattern_constraints) then
-        local can_place_pattern, pattern_reason = Patterns.canPlace(pattern, row, col, dice_value, color)
-        if not can_place_pattern then
-            return false, pattern_reason, nil
-        end
-    end
-
-    local can_place_section, section_reason, meta = self:_validateSectionRules(element, row, col, dice_value, color)
-    if not can_place_section then
-        return false, section_reason, meta
-    end
-
-    meta = meta or {}
-    meta.index = index
-    meta.color = color
-    return true, nil, meta
-end
-
----@param element string
----@param row number
----@param col number
----@param dice_value number
----@param dice_color string
----@return boolean canPlace
----@return string|nil reason
-function Folio:canPlaceDie(element, row, col, dice_value, dice_color)
-    local ok, reason = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
-    return ok, reason
-end
-
----@param element string
----@param row number
----@param col number
----@param dice_value number
----@param dice_color string
----@param pigment_name? string
----@return boolean success
----@return string message
-function Folio:placeDie(element, row, col, dice_value, dice_color, pigment_name)
-    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
-    if not ok or not meta then
-        return false, reason or "Cannot place die"
-    end
-
-    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
-
-    local elem = self.elements[element]
-    if element == "BORDERS" and meta and meta.border_motif and meta.border_pair and not elem.motif_pairs[meta.border_motif] then
-        elem.motif_pairs[meta.border_motif] = {meta.border_pair[1], meta.border_pair[2]}
-    end
-
-    elem.placed[meta.index] = {
-        value = dice_value,
-        color = color,
-        pigment = pigment_name,
-        wet = false,
-    }
-    elem.cells_filled = elem.cells_filled + 1
-    if elem.cells_filled >= elem.cells_total and not elem.completed then
-        elem.completed = true
-        self:onElementCompleted(element)
-    end
-
-    self.quality = self:calculateQuality()
-    return true, string.format("%s: placed %s (%d) at [%d,%d]", element, color, dice_value, row, col)
-end
-
----@return boolean success
----@return string message
----@return table|nil placement
-function Folio:addWetDie(element, row, col, dice_value, dice_color, pigment_name)
-    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
-    if not ok or not meta then
-        return false, reason or "Cannot queue die", nil
-    end
-
-    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
-
-    local elem = self.elements[element]
-    if element == "BORDERS" and meta and meta.border_motif and meta.border_pair and not elem.motif_pairs[meta.border_motif] then
-        elem.motif_pairs[meta.border_motif] = {meta.border_pair[1], meta.border_pair[2]}
-    end
-
-    local placement = {
-        element = element,
-        row = row,
-        col = col,
-        index = meta.index,
-        value = dice_value,
-        color = color,
-        pigment = pigment_name,
-        wet = true,
-        border_break = (meta and meta.border_break) and true or false,
-        is_gold = (meta and meta.is_gold) and true or false,
-        rubric = (element == "TEXT" and color == "ROSSO"),
-    }
-
-    elem.wet[placement.index] = placement
-    self.wet_buffer[#self.wet_buffer + 1] = placement
-
-    if placement.is_gold then
-        self.turn_risk = self.turn_risk + 1
-    end
-    if placement.border_break then
-        self.turn_risk = self.turn_risk + 1
-    end
-    local risk_on_color = self.rule_effects and self.rule_effects.risk_on_color or nil
-    local risk_on_value = self.rule_effects and self.rule_effects.risk_on_value or nil
-    local risk_on_section = self.rule_effects and self.rule_effects.risk_on_section or nil
-    if risk_on_color and risk_on_color[placement.color] then
-        self.turn_risk = self.turn_risk + (risk_on_color[placement.color] or 0)
-    end
-    if risk_on_value and risk_on_value[placement.value] then
-        self.turn_risk = self.turn_risk + (risk_on_value[placement.value] or 0)
-    end
-    if risk_on_section and risk_on_section[placement.element] then
-        self.turn_risk = self.turn_risk + (risk_on_section[placement.element] or 0)
-    end
-    local wet_threshold = 4 + (self.rule_effects and self.rule_effects.safe_wet_threshold_bonus or 0)
-    if (not self.turn_flags.over_four) and #self.wet_buffer > wet_threshold then
-        self.turn_flags.over_four = true
-        self.turn_risk = self.turn_risk + 1
-    end
-
-    local events = {
-        double_awarded = self:tryAwardDoubleSeal(),
-    }
-
-    return true, "Queued in wet buffer", placement, events
-end
-
----@param element string
----@param row number
----@param col number
----@return table|nil {constraint, placed, canPlace...}
-function Folio:getCellState(element, row, col)
-    local elem = self.elements[element]
-    if not elem then return nil end
-    
-    local pattern = elem.pattern
-    local index = Patterns.rowColToIndex(pattern, row, col)
-    local constraint = Patterns.getConstraint(pattern, row, col)
-    local placed = self:_getEffectivePlacement(elem, index)
-    
-    return {
-        row = row,
-        col = col,
-        constraint = constraint,
-        placed = placed,
-        wet = placed and placed.wet or false,
-        unlocked = elem.unlocked,
-    }
-end
-
----@param element string
----@return table[] Cell state list
-function Folio:getAllCells(element)
-    local elem = self.elements[element]
-    if not elem then return {} end
-    
-    local cells = {}
-    for row = 1, elem.pattern.rows do
-        for col = 1, elem.pattern.cols do
-            table.insert(cells, self:getCellState(element, row, col))
-        end
-    end
-    return cells
-end
-
----@param element string
----@param dice_value number
----@param dice_color string
----@return table[] Valid {row, col} positions
-function Folio:getValidPlacements(element, dice_value, dice_color)
-    local elem = self.elements[element]
-    if not elem or not elem.unlocked or elem.completed then
-        return {}
-    end
-    
-    local valid = {}
-    for row = 1, elem.pattern.rows do
-        for col = 1, elem.pattern.cols do
-            local can_place = self:canPlaceDie(element, row, col, dice_value, dice_color)
-            if can_place then
-                table.insert(valid, {row = row, col = col})
-            end
-        end
-    end
-    return valid
-end
-
----@param dice_value number
----@param dice_color string
----@return table {element = {{row,col}, ...}, ...}
-function Folio:getAllValidPlacements(dice_value, dice_color)
-    local result = {}
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        local placements = self:getValidPlacements(elem, dice_value, dice_color)
-        if #placements > 0 then
-            result[elem] = placements
-        end
-    end
-    return result
-end
-
-function Folio:_countSectionWet(elem)
-    local wet = 0
-    if not elem or not elem.wet then
-        return wet
-    end
-    for _, placement in pairs(elem.wet) do
-        if placement then
-            wet = wet + 1
-        end
-    end
-    return wet
-end
-
-function Folio:_countTextRubricsEffective()
-    local elem = self.elements.TEXT
-    if not elem then
-        return 0
-    end
-    local rubrics = 0
-    for i = 1, elem.cells_total do
-        local placed = self:_getEffectivePlacement(elem, i)
-        if placed and placed.color == "ROSSO" then
-            rubrics = rubrics + 1
-        end
-    end
-    return rubrics
-end
-
-function Folio:_dropcapsHasColor(color)
-    local elem = self.elements.DROPCAPS
-    if not elem then
+function Folio:_canPlaceInBounds(pattern, row, col)
+    if row < 1 or col < 1 then
         return false
     end
-    for i = 1, elem.cells_total do
-        local placed = self:_getEffectivePlacement(elem, i)
-        if placed and placed.color == color then
-            return true
-        end
-    end
-    return false
-end
-
-function Folio:_estimatePlacementQualityGain(element, dice_value, dice_color, meta)
-    local gain = 0
-    if element == "TEXT" then
-        if dice_color == "NERO" then
-            gain = gain + 2
-        elseif dice_color == "MARRONE" then
-            gain = gain + 1
-        elseif dice_color == "ROSSO" then
-            gain = gain + 1
-            if self:_countTextRubricsEffective() == 1 and (self.section_stains.TEXT or 0) == 0 then
-                gain = gain + 2
-            end
-        end
-    elseif element == "DROPCAPS" then
-        if dice_color == "ROSSO" then
-            gain = gain + 2
-            if self:_dropcapsHasColor("BLU") then
-                gain = gain + 2
-            end
-        elseif dice_color == "BLU" then
-            gain = gain + 2
-            if self:_dropcapsHasColor("ROSSO") then
-                gain = gain + 2
-            end
-        elseif dice_color == "GIALLO" then
-            gain = gain + 3
-        else
-            gain = gain + 1
-        end
-    elseif element == "BORDERS" then
-        if dice_color == "GIALLO" then
-            gain = gain + 1
-        else
-            gain = gain + 1
-        end
-        if meta and meta.border_break then
-            gain = gain - 1
-        end
-    elseif element == "MINIATURE" then
-        gain = gain + 1
-        if dice_color == "GIALLO" then
-            gain = gain + 1
-        end
-        if dice_value == 1 or dice_value == 6 then
-            gain = gain + 1
-        end
-    else
-        gain = gain + 1
-    end
-
-    local elem = self.elements[element]
-    if elem and (not elem.completed) then
-        local projected_filled = (elem.cells_filled or 0) + self:_countSectionWet(elem) + 1
-        if projected_filled >= (elem.cells_total or 0) then
-            gain = gain + 2
-        end
-    end
-
-    return gain
-end
-
-function Folio:getPlacementDecisionPreview(element, row, col, dice_value, dice_color)
-    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
-    if not ok or not meta then
-        return {
-            can_place = false,
-            reason = reason,
-            quality_gain = 0,
-            risk_gain = 0,
-            projected_risk = self.turn_risk or 0,
-            score = 0,
-        }
-    end
-
-    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
-    local risk_gain = 0
-
-    if meta.is_gold then
-        risk_gain = risk_gain + 1
-    end
-    if meta.border_break then
-        risk_gain = risk_gain + 1
-    end
-
-    local risk_on_color = self.rule_effects and self.rule_effects.risk_on_color or nil
-    local risk_on_value = self.rule_effects and self.rule_effects.risk_on_value or nil
-    local risk_on_section = self.rule_effects and self.rule_effects.risk_on_section or nil
-    if risk_on_color and risk_on_color[color] then
-        risk_gain = risk_gain + (risk_on_color[color] or 0)
-    end
-    if risk_on_value and risk_on_value[dice_value] then
-        risk_gain = risk_gain + (risk_on_value[dice_value] or 0)
-    end
-    if risk_on_section and risk_on_section[element] then
-        risk_gain = risk_gain + (risk_on_section[element] or 0)
-    end
-
-    local wet_threshold = 4 + (self.rule_effects and self.rule_effects.safe_wet_threshold_bonus or 0)
-    if (not self.turn_flags.over_four) and (#self.wet_buffer + 1 > wet_threshold) then
-        risk_gain = risk_gain + 1
-    end
-
-    local quality_gain = self:_estimatePlacementQualityGain(element, dice_value, color, meta)
-    local projected_risk = (self.turn_risk or 0) + risk_gain
-
-    return {
-        can_place = true,
-        quality_gain = quality_gain,
-        risk_gain = risk_gain,
-        projected_risk = projected_risk,
-        score = quality_gain - risk_gain,
-    }
-end
-
-function Folio:pickBestWetPlacement()
-    local best = nil
-    local best_score = -math.huge
-    for _, entry in ipairs(self.wet_buffer or {}) do
-        local preview = self:getPlacementDecisionPreview(entry.element, entry.row, entry.col, entry.value, entry.color)
-        local score = preview and preview.score or 0
-        if not best or score > best_score then
-            best = entry
-            best_score = score
-        end
-    end
-    return best
-end
-
-function Folio:_borderMotifHasPermanent(elem, motif)
-    local pattern = elem.pattern
-    for row = 1, pattern.rows do
-        for col = 1, pattern.cols do
-            local m = self:_getBorderMotifPos(pattern, row, col)
-            if m == motif then
-                local idx = Patterns.rowColToIndex(pattern, row, col)
-                if elem.placed[idx] then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
-function Folio:_borderMotifHasWet(elem, motif)
-    local pattern = elem.pattern
-    for row = 1, pattern.rows do
-        for col = 1, pattern.cols do
-            local m = self:_getBorderMotifPos(pattern, row, col)
-            if m == motif then
-                local idx = Patterns.rowColToIndex(pattern, row, col)
-                if elem.wet[idx] then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
-function Folio:_pruneBorderMotifPairs()
-    local elem = self.elements.BORDERS
-    if not elem or not elem.motif_pairs then
-        return
-    end
-    for motif, _ in pairs(elem.motif_pairs) do
-        local keep = self:_borderMotifHasPermanent(elem, motif) or self:_borderMotifHasWet(elem, motif)
-        if not keep then
-            elem.motif_pairs[motif] = nil
-        end
-    end
-end
-
-function Folio:hasAnyLegalPlacement(dice_values)
-    if not dice_values then
+    if row > (pattern.rows or GRID_ROWS) or col > (pattern.cols or GRID_COLS) then
         return false
     end
-    for _, die in ipairs(dice_values) do
-        local value = (type(die) == "table") and die.value or die
-        local color = (type(die) == "table") and die.color or VALUE_TO_COLOR[value]
-        if value and color then
-            local all = self:getAllValidPlacements(value, color)
-            if next(all) ~= nil then
+    return true
+end
+
+function Folio:_matchesConstraint(constraint, dice_value, dice_color)
+    if constraint == nil then
+        return true, nil
+    end
+    if type(constraint) == "number" then
+        if dice_value == constraint then
+            return true, nil
+        end
+        return false, string.format("Requires value %d", constraint)
+    end
+    if type(constraint) == "string" then
+        if dice_color == constraint then
+            return true, nil
+        end
+        return false, "Requires color " .. tostring(constraint)
+    end
+    return false, "Invalid constraint"
+end
+
+function Folio:_hasCommittedOrthogonalValue(elem, row, col, dice_value)
+    local pattern = elem.pattern
+    local neighbors = {
+        {row - 1, col},
+        {row + 1, col},
+        {row, col - 1},
+        {row, col + 1},
+    }
+    for _, cell in ipairs(neighbors) do
+        local r = cell[1]
+        local c = cell[2]
+        if self:_canPlaceInBounds(pattern, r, c) then
+            local idx = row_col_to_index(pattern, r, c)
+            local placed = elem.placed[idx]
+            if placed and placed.value == dice_value then
                 return true
             end
         end
@@ -780,291 +274,451 @@ function Folio:hasAnyLegalPlacement(dice_values)
     return false
 end
 
-function Folio:onElementCompleted(element)
-    log("[Folio] Completed: " .. element)
-    
-    local idx = nil
-    for i, elem in ipairs(Folio.ELEMENTS) do
-        if elem == element then idx = i break end
+function Folio:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    local key, elem = self:_resolveElement(element)
+    if not elem then
+        return false, "Invalid element", nil
     end
-    if idx and idx < #Folio.ELEMENTS then
-        local next_elem = Folio.ELEMENTS[idx + 1]
-        self.elements[next_elem].unlocked = true
-        log("[Folio] Unlocked: " .. next_elem)
+    if self.completed then
+        return false, "Folio completed", nil
     end
-    
-    local bonus = Folio.BONUS[element]
-    if bonus and bonus.shield then
-        self.shield = self.shield + bonus.shield
+    if self.busted then
+        return false, "Folio busted", nil
     end
-    
-    if self.elements.TEXT.completed and self.elements.MINIATURE.completed then
-        self.completed = true
-        log("[Folio] FOLIO COMPLETED!")
+    if not elem.unlocked then
+        return false, "Locked", nil
     end
+
+    local value = tonumber(dice_value)
+    if not value then
+        return false, "Invalid die value", nil
+    end
+    value = math.floor(value)
+    if value < 1 or value > 6 then
+        return false, "Invalid die value", nil
+    end
+
+    local color = self:_normalizePlacementColor(value, dice_color)
+    if not color then
+        return false, "Invalid die color", nil
+    end
+
+    local pattern = elem.pattern
+    if not self:_canPlaceInBounds(pattern, row, col) then
+        return false, "Out of bounds", nil
+    end
+
+    local index = row_col_to_index(pattern, row, col)
+    if elem.stained and elem.stained[index] then
+        return false, "Cell is stained", nil
+    end
+    if elem.placed[index] or elem.wet[index] then
+        return false, "Occupied", nil
+    end
+
+    local constraint = pattern.grid and pattern.grid[index] or nil
+    local ok_constraint, reason = self:_matchesConstraint(constraint, value, color)
+    if not ok_constraint then
+        return false, reason, nil
+    end
+
+    if self:_hasCommittedOrthogonalValue(elem, row, col, value) then
+        return false, "Adjacent committed value conflict", nil
+    end
+
+    return true, nil, {
+        element = key,
+        row = row,
+        col = col,
+        index = index,
+        value = value,
+        color = color,
+    }
 end
 
----@param amount number Number of stains (default 1)
----@return boolean busted True when stain threshold is reached
-function Folio:addStain(amount)
-    amount = amount or 1
+function Folio:canPlaceDie(element, row, col, dice_value, dice_color)
+    local ok, reason = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    return ok, reason
+end
 
-    if amount > 0 and (self.preparation_guard or 0) > 0 then
-        local blocked = math.min(amount, self.preparation_guard)
-        self.preparation_guard = self.preparation_guard - blocked
-        amount = amount - blocked
-        if blocked > 0 then
-            log("[Folio] Preparation guard ignored " .. blocked .. " stain(s)")
-        end
-    end
-    if amount <= 0 then
+function Folio:_applyCommittedPlacement(entry)
+    local key, elem = self:_resolveElement(entry.element)
+    if not elem then
         return false
     end
-    
-    if self.shield > 0 then
-        local absorbed = math.min(self.shield, amount)
-        self.shield = self.shield - absorbed
-        amount = amount - absorbed
-        if absorbed > 0 then
-            log("[Folio] Shield absorbed " .. absorbed .. " stain(s)")
+    local placement = {
+        element = key,
+        row = entry.row,
+        col = entry.col,
+        index = entry.index,
+        value = entry.value,
+        color = entry.color,
+        pigment = entry.pigment,
+        wet = false,
+    }
+    if elem.placed[placement.index] then
+        return false
+    end
+    elem.placed[placement.index] = placement
+    elem.cells_filled = (elem.cells_filled or 0) + 1
+    return true
+end
+
+function Folio:_updateCompletionState()
+    local elem = self.elements[self.active_element]
+    local filled = elem and (elem.cells_filled or 0) or 0
+    local target = self.objective and self.objective.target or 15
+    if filled >= target then
+        elem.completed = true
+        self.completed = true
+    end
+    self.quality = self:calculateQuality()
+end
+
+function Folio:placeDie(element, row, col, dice_value, dice_color, pigment_name)
+    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    if not ok or not meta then
+        return false, reason or "Cannot place die"
+    end
+
+    local entry = {
+        element = meta.element,
+        row = meta.row,
+        col = meta.col,
+        index = meta.index,
+        value = meta.value,
+        color = meta.color,
+        pigment = pigment_name,
+        wet = false,
+    }
+
+    self:_applyCommittedPlacement(entry)
+    self:_updateCompletionState()
+    return true, "Placed"
+end
+
+function Folio:addWetDie(element, row, col, dice_value, dice_color, pigment_name)
+    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    if not ok or not meta then
+        return false, reason or "Cannot queue die", nil
+    end
+
+    local _, elem = self:_resolveElement(meta.element)
+    local placement = {
+        element = meta.element,
+        row = meta.row,
+        col = meta.col,
+        index = meta.index,
+        value = meta.value,
+        color = meta.color,
+        pigment = pigment_name,
+        wet = true,
+    }
+
+    elem.wet[placement.index] = placement
+    self.wet_buffer[#self.wet_buffer + 1] = placement
+
+    return true, "Queued in wet buffer", placement, {}
+end
+
+function Folio:getCellState(element, row, col)
+    local key, elem = self:_resolveElement(element)
+    if not elem then
+        return nil
+    end
+
+    local pattern = elem.pattern
+    if not self:_canPlaceInBounds(pattern, row, col) then
+        return nil
+    end
+
+    local index = row_col_to_index(pattern, row, col)
+    local placed = elem.wet[index] or elem.placed[index]
+    return {
+        element = key,
+        row = row,
+        col = col,
+        constraint = pattern.grid and pattern.grid[index] or nil,
+        placed = placed,
+        wet = placed and placed.wet or false,
+        stained = elem.stained and elem.stained[index] or false,
+        unlocked = elem.unlocked,
+    }
+end
+
+function Folio:getAllCells(element)
+    local _, elem = self:_resolveElement(element)
+    if not elem then
+        return {}
+    end
+
+    local out = {}
+    for row = 1, elem.pattern.rows do
+        for col = 1, elem.pattern.cols do
+            out[#out + 1] = self:getCellState(element, row, col)
         end
     end
-    
-    self.stain_count = self.stain_count + amount
-    log(string.format("[Folio] Stains: %d/%d", self.stain_count, self.stain_threshold))
-    
+    return out
+end
+
+function Folio:getValidPlacements(element, dice_value, dice_color)
+    local key, elem = self:_resolveElement(element)
+    if not elem or not elem.unlocked or self.completed or self.busted then
+        return {}
+    end
+
+    local valid = {}
+    for row = 1, elem.pattern.rows do
+        for col = 1, elem.pattern.cols do
+            local ok = self:canPlaceDie(key, row, col, dice_value, dice_color)
+            if ok then
+                valid[#valid + 1] = {row = row, col = col}
+            end
+        end
+    end
+    return valid
+end
+
+function Folio:getAllValidPlacements(dice_value, dice_color)
+    local out = {}
+    for _, element in ipairs(Folio.ELEMENTS) do
+        local placements = self:getValidPlacements(element, dice_value, dice_color)
+        if #placements > 0 then
+            out[element] = placements
+        end
+    end
+    return out
+end
+
+function Folio:getPlacementDecisionPreview(element, row, col, dice_value, dice_color)
+    local ok, reason = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
+    if not ok then
+        return {
+            can_place = false,
+            reason = reason,
+            quality_gain = 0,
+            risk_gain = 0,
+            projected_risk = 0,
+            score = 0,
+        }
+    end
+
+    return {
+        can_place = true,
+        quality_gain = 1,
+        risk_gain = 0,
+        projected_risk = 0,
+        score = 1,
+    }
+end
+
+function Folio:pickBestWetPlacement()
+    local best = self.wet_buffer[1]
+    if not best then
+        return nil
+    end
+    return {
+        element = best.element,
+        row = best.row,
+        col = best.col,
+        index = best.index,
+        value = best.value,
+        color = best.color,
+        score = 1,
+        quality_gain = 1,
+        risk_gain = 0,
+    }
+end
+
+function Folio:drawTurnPalette(count)
+    local target = math.max(1, math.floor(tonumber(count) or 3))
+    local bag = self.ink_bag or {}
+    local selected = {}
+    local seen = {}
+    local safety = 128
+
+    while #selected < target and #bag > 0 and safety > 0 do
+        local idx = random_int(1, #bag)
+        local color = bag[idx]
+        if color and not seen[color] then
+            seen[color] = true
+            selected[#selected + 1] = color
+        end
+        safety = safety - 1
+    end
+
+    if #selected < target then
+        local common = WindowPatterns.getCommonColors()
+        for _, color in ipairs(common) do
+            if #selected >= target then
+                break
+            end
+            if color and not seen[color] then
+                seen[color] = true
+                selected[#selected + 1] = color
+            end
+        end
+    end
+
+    self.turn_palette = shallow_copy_array(selected)
+    return selected
+end
+
+function Folio:markTurnStarted(palette)
+    self.turn_count = (self.turn_count or 0) + 1
+    self.turn_palette = palette and shallow_copy_array(palette) or self.turn_palette
+end
+
+function Folio:_blockRandomEmptyCell()
+    local elem = self.elements[self.active_element]
+    if not elem then
+        return nil
+    end
+
+    local candidates = {}
+    for index = 1, elem.cells_total do
+        if (not elem.placed[index]) and (not elem.wet[index]) and (not elem.stained[index]) then
+            candidates[#candidates + 1] = index
+        end
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    local picked = candidates[random_int(1, #candidates)]
+    elem.stained[picked] = true
+    local row, col = index_to_row_col(elem.pattern, picked)
+    return {element = self.active_element, row = row, col = col, index = picked}
+end
+
+function Folio:addStain(amount)
+    amount = math.max(0, math.floor(tonumber(amount) or 1))
+    for _ = 1, amount do
+        self.stain_count = self.stain_count + 1
+        self:_blockRandomEmptyCell()
+    end
     if self.stain_count >= self.stain_threshold then
         self.busted = true
-        log("[Folio] BUST! Too many stains!")
         return true
     end
-    
     return false
 end
 
 function Folio:removeStain(amount)
-    amount = amount or 1
-    self.stain_count = math.max(0, self.stain_count - amount)
-    log(string.format("[Folio] Stain removed. Now: %d/%d", self.stain_count, self.stain_threshold))
+    amount = math.max(0, math.floor(tonumber(amount) or 1))
+    if amount <= 0 then
+        return
+    end
+
+    local elem = self.elements[self.active_element]
+    if elem then
+        local stained_indexes = {}
+        for index = 1, elem.cells_total do
+            if elem.stained[index] then
+                stained_indexes[#stained_indexes + 1] = index
+            end
+        end
+        while amount > 0 and #stained_indexes > 0 do
+            local pick = random_int(1, #stained_indexes)
+            local idx = stained_indexes[pick]
+            elem.stained[idx] = nil
+            table.remove(stained_indexes, pick)
+            amount = amount - 1
+            self.stain_count = math.max(0, self.stain_count - 1)
+        end
+    end
+
+    if self.stain_count < self.stain_threshold then
+        self.busted = false
+    end
+end
+
+function Folio:hasAnyLegalPlacement(dice_values, palette)
+    local list = dice_values or {}
+    local colors = palette or self.turn_palette or {}
+    if #colors == 0 then
+        colors = self:drawTurnPalette(3)
+    end
+
+    for _, die in ipairs(list) do
+        local value = (type(die) == "table") and die.value or die
+        value = tonumber(value)
+        if value then
+            value = math.floor(value)
+            for _, color in ipairs(colors) do
+                local placements = self:getValidPlacements(self.active_element, value, color)
+                if #placements > 0 then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function Folio:hasAnyMove(dice_values, palette)
+    return self:hasAnyLegalPlacement(dice_values, palette)
+end
+
+function Folio:onElementCompleted(element)
+    local _, elem = self:_resolveElement(element)
+    if elem then
+        elem.completed = true
+    end
+    self.completed = true
 end
 
 function Folio:calculateQuality()
-    local quality = 0
-
-    do
-        local elem = self.elements.TEXT
-        if elem then
-            local rubrics = 0
-            for i = 1, elem.cells_total do
-                local placed = elem.placed[i]
-                if placed then
-                    if placed.color == "NERO" then
-                        quality = quality + 2
-                    elseif placed.color == "MARRONE" then
-                        quality = quality + 1
-                    elseif placed.color == "ROSSO" then
-                        rubrics = rubrics + 1
-                    end
-                end
-            end
-            if rubrics >= 2 and (self.section_stains.TEXT or 0) == 0 then
-                quality = quality + 3
-            end
-        end
+    local elem = self.elements[self.active_element]
+    if not elem then
+        return 0
     end
+    local committed = elem.cells_filled or 0
+    return math.max(0, committed * 2 - self.stain_count)
+end
 
-    do
-        local elem = self.elements.BORDERS
-        if elem then
-            for i = 1, elem.cells_total do
-                local placed = elem.placed[i]
-                if placed and placed.color == "GIALLO" then
-                    quality = quality + 1
-                end
-            end
-        end
-    end
-
-    do
-        local elem = self.elements.MINIATURE
-        if elem then
-            local colors = {}
-            local has_gold = false
-            for i = 1, elem.cells_total do
-                local placed = elem.placed[i]
-                if placed and placed.color then
-                    colors[placed.color] = true
-                    if placed.color == "GIALLO" then
-                        has_gold = true
-                    end
-                end
-            end
-
-            local distinct = 0
-            for _, present in pairs(colors) do
-                if present then
-                    distinct = distinct + 1
-                end
-            end
-            quality = quality + math.min(4, distinct)
-
-            local rows = elem.pattern.rows
-            local cols = elem.pattern.cols
-            local mud = 0
-            for row = 1, rows do
-                for col = 1, cols do
-                    local idx = Patterns.rowColToIndex(elem.pattern, row, col)
-                    local a = elem.placed[idx]
-                    if a and a.color then
-                        if col < cols then
-                            local right = elem.placed[Patterns.rowColToIndex(elem.pattern, row, col + 1)]
-                            if right and right.color == a.color then
-                                mud = mud + 1
-                            end
-                        end
-                        if row < rows then
-                            local down = elem.placed[Patterns.rowColToIndex(elem.pattern, row + 1, col)]
-                            if down and down.color == a.color then
-                                mud = mud + 1
-                            end
-                        end
-                    end
-                end
-            end
-            quality = quality - mud
-
-            if has_gold and elem.completed then
-                quality = quality + 3
-            end
-        end
-    end
-
-    do
-        local elem = self.elements.DROPCAPS
-        if elem then
-            local has_red = false
-            local has_blue = false
-            for i = 1, elem.cells_total do
-                local placed = elem.placed[i]
-                if placed and placed.color then
-                    if placed.color == "ROSSO" then
-                        quality = quality + 2
-                        has_red = true
-                    elseif placed.color == "BLU" then
-                        quality = quality + 2
-                        has_blue = true
-                    elseif placed.color == "GIALLO" then
-                        quality = quality + 3
-                    end
-                end
-            end
-            if has_red and has_blue then
-                quality = quality + 2
-            end
-        end
-    end
-
-    do
-        local quality_per_color = self.rule_effects and self.rule_effects.quality_per_color or nil
-        local quality_per_section = self.rule_effects and self.rule_effects.quality_per_section or nil
-        if quality_per_color or quality_per_section then
-            for _, elem_name in ipairs(Folio.ELEMENTS) do
-                local elem = self.elements[elem_name]
-                if elem then
-                    for i = 1, elem.cells_total do
-                        local placed = elem.placed[i]
-                        if placed then
-                            if quality_per_color and placed.color and quality_per_color[placed.color] then
-                                quality = quality + (quality_per_color[placed.color] or 0)
-                            end
-                            if quality_per_section and quality_per_section[elem_name] then
-                                quality = quality + (quality_per_section[elem_name] or 0)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return quality
+function Folio:getCompletionStats()
+    return {
+        turns = self.turn_count or 0,
+        busts = self.bust_count or 0,
+        stains = self.stain_count or 0,
+    }
 end
 
 function Folio:getStatus()
-    local cards = self:getRuleCards()
-    local status = {
+    local elem = self.elements[self.active_element]
+    local filled, target = self:getObjectiveProgress()
+    return {
         folio_set = self.folio_set,
         stains = string.format("%d/%d", self.stain_count, self.stain_threshold),
-        shield = self.shield,
         quality = self.quality,
         wet = #self.wet_buffer,
-        risk = self.turn_risk,
-        seals = self.seals or 0,
-        busted = self.busted,
         completed = self.completed,
-        border_parity = self.border_parity,
-        preparation_guard = self.preparation_guard or 0,
-        tool_uses_left = self.tool_uses_left or 0,
-        cards = {
-            commission = cards.commission and cards.commission.name or nil,
-            parchment = cards.parchment and cards.parchment.name or nil,
-            tool = cards.tool and cards.tool.name or nil,
-        },
-        elements = {},
+        busted = self.busted,
+        objective = string.format("%d/%d", filled, target),
+        pattern = elem and elem.pattern and elem.pattern.name or "Window",
+        token = elem and elem.pattern and elem.pattern.token or 0,
     }
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        local e = self.elements[elem]
-        status.elements[elem] = {
-            pattern = e.pattern.name,
-            progress = string.format("%d/%d", e.cells_filled, e.cells_total),
-            unlocked = e.unlocked,
-            completed = e.completed,
-        }
-    end
-    return status
 end
 
 function Folio:debugPrint()
-    log("\n" .. string.rep("═", 60))
-    log("FOLIO: " .. tostring(self.folio_set))
-    log(string.format("Stains: %d/%d | Shield: %d | Quality: %d | Wet: %d | Risk: %d | Busted: %s | Completed: %s",
-        self.stain_count, self.stain_threshold, self.shield, self.quality,
-        #self.wet_buffer, self.turn_risk, tostring(self.busted), tostring(self.completed)))
-    log(string.rep("─", 60))
-    
-    for _, elemName in ipairs(Folio.ELEMENTS) do
-        local elem = self.elements[elemName]
-        local lock = elem.unlocked and "🔓" or "🔒"
-        local check = elem.completed and "✅" or ""
-        print(string.format("%s %s: %s [%d/%d] %s",
-            lock, elemName, elem.pattern.name, elem.cells_filled, elem.cells_total, check))
-        
-        if elem.unlocked then
-            for row = 1, elem.pattern.rows do
-                local line = "    "
-                for col = 1, elem.pattern.cols do
-                    local state = self:getCellState(elemName, row, col)
-                    local placed = state and state.placed or nil
-                    local constraint = state and state.constraint or nil
-                    if placed and placed.color and placed.value then
-                        line = line .. string.format("[%s%s]",
-                            tostring(placed.color):sub(1,1), tostring(placed.value))
-                    elseif constraint then
-                        if type(constraint) == "number" then
-                            line = line .. string.format("( %d )", constraint)
-                        else
-                            line = line .. string.format("(%s)", tostring(constraint):sub(1,3))
-                        end
-                    else
-                        line = line .. "[   ]"
-                    end
-                    line = line .. " "
-                end
-                log(line)
-            end
-        end
+    if not _G.log then
+        return
     end
-    log(string.rep("═", 60))
+    local filled, target = self:getObjectiveProgress()
+    _G.log(string.format(
+        "[Folio] %s | Pattern=%s | Objective=%d/%d | Stains=%d/%d | Wet=%d | Busted=%s | Completed=%s",
+        tostring(self.folio_set),
+        tostring(self:getPatternName()),
+        filled,
+        target,
+        self.stain_count,
+        self.stain_threshold,
+        #self.wet_buffer,
+        tostring(self.busted),
+        tostring(self.completed)
+    ))
 end
 
 Folio.registerPush = FolioTurn.registerPush
@@ -1089,4 +743,3 @@ Folio.salvageWetBufferOnBust = FolioTurn.salvageWetBufferOnBust
 Folio.commitWetBuffer = FolioTurn.commitWetBuffer
 
 return Folio
-

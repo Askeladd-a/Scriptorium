@@ -11,6 +11,8 @@ local ScriptoriumOverlays = require("src.features.scriptorium.overlays")
 local Scriptorium = {
     run = nil,
     dice_results = {},
+    turn_palette = nil,
+    palette_picker = nil,
     state = "waiting",
     message = nil,
     message_timer = 0,
@@ -82,6 +84,8 @@ local COLOR_SWATCH = {
     ROSSO = {0.72, 0.20, 0.15},
     BLU = {0.24, 0.37, 0.70},
     GIALLO = {0.85, 0.70, 0.25},
+    VIOLA = {0.56, 0.34, 0.70},
+    BIANCO = {0.93, 0.93, 0.93},
 }
 
 Scriptorium.value_to_color = VALUE_TO_COLOR
@@ -370,11 +374,13 @@ function Scriptorium:buildPlacementFocus()
     end
 
     local folio = self.run.current_folio
+    local palette = (self.getTurnPalette and self:getTurnPalette()) or {}
     local focus = {
         active = true,
         die_index = self.selected_die,
         die_value = die.value,
-        die_color = die.color_key,
+        die_color = nil,
+        palette = palette,
         legal_by_element = {},
         best_element = nil,
         best_entry = nil,
@@ -384,37 +390,63 @@ function Scriptorium:buildPlacementFocus()
     local best_element_count = -1
     local best_element_score = -math.huge
     for _, element in ipairs(folio.ELEMENTS) do
-        local placements = folio:getValidPlacements(element, die.value, die.color_key)
-        if #placements > 0 then
-            local zone_info = {
-                count = #placements,
-                by_key = {},
-            }
-            focus.total_legal = focus.total_legal + #placements
+        local zone_info = {
+            count = 0,
+            by_key = {},
+        }
 
-            local element_best_score = -math.huge
+        local element_best_score = -math.huge
+        for _, color in ipairs(palette) do
+            local placements = folio:getValidPlacements(element, die.value, color)
             for _, placement in ipairs(placements) do
                 local preview = folio.getPlacementDecisionPreview
-                        and folio:getPlacementDecisionPreview(element, placement.row, placement.col, die.value, die.color_key)
+                        and folio:getPlacementDecisionPreview(element, placement.row, placement.col, die.value, color)
                     or {quality_gain = 0, risk_gain = 0, score = 0}
                 local key = tostring(placement.row) .. ":" .. tostring(placement.col)
-                local entry = {
-                    element = element,
-                    row = placement.row,
-                    col = placement.col,
-                    quality_gain = preview.quality_gain or 0,
-                    risk_gain = preview.risk_gain or 0,
-                    score = preview.score or 0,
-                }
-                zone_info.by_key[key] = entry
-                if entry.score > element_best_score then
-                    element_best_score = entry.score
+                local entry = zone_info.by_key[key]
+                if not entry then
+                    entry = {
+                        element = element,
+                        row = placement.row,
+                        col = placement.col,
+                        quality_gain = preview.quality_gain or 0,
+                        risk_gain = preview.risk_gain or 0,
+                        score = preview.score or 0,
+                        palette_colors = {color},
+                    }
+                    zone_info.by_key[key] = entry
+                    zone_info.count = zone_info.count + 1
+                else
+                    if not entry.palette_colors then
+                        entry.palette_colors = {}
+                    end
+                    local has_color = false
+                    for _, existing in ipairs(entry.palette_colors) do
+                        if existing == color then
+                            has_color = true
+                            break
+                        end
+                    end
+                    if not has_color then
+                        entry.palette_colors[#entry.palette_colors + 1] = color
+                    end
+                    if (preview.score or 0) > (entry.score or -math.huge) then
+                        entry.quality_gain = preview.quality_gain or 0
+                        entry.risk_gain = preview.risk_gain or 0
+                        entry.score = preview.score or 0
+                    end
                 end
-                if not focus.best_entry or entry.score > (focus.best_entry.score or -math.huge) then
+                if (entry.score or -math.huge) > element_best_score then
+                    element_best_score = entry.score or 0
+                end
+                if not focus.best_entry or (entry.score or -math.huge) > (focus.best_entry.score or -math.huge) then
                     focus.best_entry = entry
                 end
             end
+        end
 
+        if zone_info.count > 0 then
+            focus.total_legal = focus.total_legal + zone_info.count
             focus.legal_by_element[element] = zone_info
             if zone_info.count > best_element_count or (zone_info.count == best_element_count and element_best_score > best_element_score) then
                 best_element_count = zone_info.count
@@ -434,6 +466,8 @@ function Scriptorium:enter(folio_set_type, seed)
     self.run = Run.new(folio_set_type or "BIFOLIO", seed)
     self.value_to_color = VALUE_TO_COLOR
     self.dice_results = {}
+    self.turn_palette = nil
+    self.palette_picker = nil
     self.state = "waiting"
     self.message = nil
     self.message_timer = 0
@@ -455,6 +489,8 @@ end
 function Scriptorium:exit()
     self.run = nil
     self.dice_results = {}
+    self.turn_palette = nil
+    self.palette_picker = nil
     self.state = "waiting"
     self.message = nil
     self.message_timer = 0
@@ -477,6 +513,8 @@ function Scriptorium:update(dt)
             if self.run and self.run.current_folio and (self.run.current_folio.busted or self.run.current_folio.completed) then
                 local _, result = self.run:nextFolio()
                 self.dice_results = {}
+                self.turn_palette = nil
+                self.palette_picker = nil
                 self.state = "waiting"
                 if result == "victory" then
                     self:showMessage("VICTORY!", nil, 5)
@@ -668,6 +706,16 @@ function Scriptorium:drawTileCell(x, y, size, constraint, marker, placed, tile_k
         love.graphics.setColor(0.96, 0.90, 0.78, 0.96)
         love.graphics.printf(txt, x + 2, y + size - RuntimeUI.sized(12), size - 4, "center")
     end
+
+    if visual and visual.stained and not placed then
+        love.graphics.setColor(0.14, 0.08, 0.06, 0.54)
+        love.graphics.rectangle("fill", x + 1, y + 1, size - 2, size - 2, 2, 2)
+        love.graphics.setColor(0.70, 0.28, 0.22, 0.86)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(x + RuntimeUI.sized(4), y + RuntimeUI.sized(4), x + size - RuntimeUI.sized(4), y + size - RuntimeUI.sized(4))
+        love.graphics.line(x + size - RuntimeUI.sized(4), y + RuntimeUI.sized(4), x + RuntimeUI.sized(4), y + size - RuntimeUI.sized(4))
+        love.graphics.setLineWidth(1)
+    end
 end
 
 local function resolve_panel_rect(bg, def)
@@ -754,6 +802,7 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
             local tile_key = elem.pattern.tile_keys and elem.pattern.tile_keys[index] or get_tile_key_for_constraint(constraint)
             local marker = elem.pattern.tile_markers and elem.pattern.tile_markers[index] or nil
             local placed = (elem.wet and elem.wet[index]) or elem.placed[index]
+            local stained = elem.stained and elem.stained[index] or false
             local key = tostring(row) .. ":" .. tostring(col)
             local preview = zone_focus and zone_focus.by_key and zone_focus.by_key[key] or nil
             local visual = nil
@@ -761,16 +810,27 @@ function Scriptorium:drawZoneGrid(bg, zone, high_contrast)
                 if preview and elem.unlocked and (not elem.completed) then
                     visual = {highlight = true, preview = preview}
                     if selected_die and (not selected_die.used) then
+                        local options = {}
+                        if preview and preview.palette_colors then
+                            for _, color in ipairs(preview.palette_colors) do
+                                options[#options + 1] = color
+                            end
+                        end
                         self.ui_hit.placement_cells[#self.ui_hit.placement_cells + 1] = {
                             element = zone.element,
                             row = row,
                             col = col,
                             rect = {x = cx, y = cy, w = cell, h = cell},
+                            palette_options = options,
                         }
                     end
                 else
                     visual = {dim = true}
                 end
+            end
+            if stained and not placed then
+                visual = visual or {}
+                visual.stained = true
             end
             self:drawTileCell(cx, cy, cell, constraint, marker, placed, tile_key, high_contrast, visual)
         end
@@ -815,6 +875,10 @@ function Scriptorium:drawUnifiedFolioOverview(page, high_contrast)
     end
     local folio = self.run.current_folio
     local zones = self:getUnifiedZones(page)
+    local zone = (zones and zones.main) or (zones and zones.ordered and zones.ordered[1]) or nil
+    if not zone then
+        return
+    end
 
     love.graphics.setColor(0.88, 0.80, 0.66, high_contrast and 0.66 or 0.54)
     love.graphics.rectangle("fill", page.x, page.y, page.w, page.h, 10, 10)
@@ -827,84 +891,27 @@ function Scriptorium:drawUnifiedFolioOverview(page, high_contrast)
         love.graphics.rectangle("fill", page.x, page.y, page.w, page.h, 10, 10)
     end
 
-    local inner = {
-        x = page.x + RuntimeUI.sized(16),
-        y = page.y + RuntimeUI.sized(16),
-        w = page.w - RuntimeUI.sized(32),
-        h = page.h - RuntimeUI.sized(32),
-    }
-    local border_band = RuntimeUI.sized(20)
-    local border_inner = {
-        x = inner.x + border_band,
-        y = inner.y + border_band,
-        w = inner.w - border_band * 2,
-        h = inner.h - border_band * 2,
-    }
+    local pattern_name = (folio.getPatternName and folio:getPatternName()) or "Window"
+    local token = (folio.getPatternToken and folio:getPatternToken()) or 0
+    draw_text_center(string.format("%s  (token %d)", tostring(pattern_name), tonumber(token) or 0), {
+        x = page.x,
+        y = page.y + RuntimeUI.sized(8),
+        w = page.w,
+        h = RuntimeUI.sized(24),
+    }, get_font(16, false), {0.66, 0.46, 0.26, 1})
 
-    local border_hover = point_in_ring(self.mouse_x, self.mouse_y, inner, border_inner)
-
-    local borders_elem = folio.elements.BORDERS
-    local bfilled, btotal = get_section_progress(borders_elem)
-    love.graphics.setColor(0.58, 0.42, 0.26, border_hover and 0.68 or 0.50)
-    love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", inner.x, inner.y, inner.w, inner.h, 9, 9)
-    love.graphics.setLineWidth(1)
-    draw_text_center(string.format("Borders %d/%d", bfilled, btotal), {
-        x = inner.x,
-        y = inner.y + RuntimeUI.sized(4),
-        w = inner.w,
-        h = RuntimeUI.sized(18),
-    }, get_font(12, false), {0.62, 0.44, 0.26, 1})
-
-    if not borders_elem.unlocked then
-        love.graphics.setColor(0.08, 0.08, 0.08, 0.14)
-        love.graphics.rectangle("fill", inner.x, inner.y, inner.w, inner.h, 9, 9)
-        local badge_size = RuntimeUI.sized(22)
-        local bx = inner.x + inner.w - badge_size - RuntimeUI.sized(6)
-        local by = inner.y + RuntimeUI.sized(6)
-        love.graphics.setColor(0.28, 0.20, 0.12, 0.94)
-        love.graphics.rectangle("fill", bx, by, badge_size, badge_size, 4, 4)
-        love.graphics.setColor(0.75, 0.58, 0.36, 0.86)
-        love.graphics.rectangle("line", bx, by, badge_size, badge_size, 4, 4)
-        local cx = bx + badge_size * 0.5
-        local cy = by + badge_size * 0.5
-        local r = badge_size * 0.24
-        love.graphics.setColor(0.93, 0.88, 0.76, 0.95)
-        love.graphics.setLineWidth(2)
-        love.graphics.arc("line", "open", cx, cy - RuntimeUI.sized(2), r, math.pi, math.pi * 2)
-        love.graphics.rectangle("line", cx - r, cy - RuntimeUI.sized(1), r * 2, r * 1.25, 2, 2)
-        love.graphics.setLineWidth(1)
-        self.lock_badges[#self.lock_badges + 1] = {
-            rect = {x = bx, y = by, w = badge_size, h = badge_size},
-            text = get_unlock_tooltip(folio, "BORDERS"),
-        }
+    local filled, target = 0, 15
+    if folio.getObjectiveProgress then
+        filled, target = folio:getObjectiveProgress()
     end
+    draw_text_center(string.format("Objective: fill %d/%d cells", tonumber(filled) or 0, tonumber(target) or 15), {
+        x = page.x,
+        y = page.y + page.h - RuntimeUI.sized(28),
+        w = page.w,
+        h = RuntimeUI.sized(20),
+    }, get_font(13, false), {0.70, 0.51, 0.30, 1})
 
-    self:drawZoneGrid(nil, zones.borders, high_contrast)
-    self:drawZoneGrid(nil, zones.text, high_contrast)
-    self:drawZoneGrid(nil, zones.dropcaps, high_contrast)
-    self:drawZoneGrid(nil, zones.miniature, high_contrast)
-
-    local corners_elem = folio.elements.DROPCAPS
-    if corners_elem then
-        local slot = math.floor(math.min(page.w, page.h) * 0.075)
-        local pad = RuntimeUI.sized(16)
-        local corner_positions = {
-            {x = inner.x + pad, y = inner.y + pad},
-            {x = inner.x + inner.w - slot - pad, y = inner.y + pad},
-            {x = inner.x + pad, y = inner.y + inner.h - slot - pad},
-            {x = inner.x + inner.w - slot - pad, y = inner.y + inner.h - slot - pad},
-        }
-        local corner_indexes = {1, 2, 3, 4}
-        for i, pos in ipairs(corner_positions) do
-            local index = corner_indexes[i]
-            local constraint = corners_elem.pattern.grid[index]
-            local tile_key = corners_elem.pattern.tile_keys and corners_elem.pattern.tile_keys[index] or get_tile_key_for_constraint(constraint)
-            local marker = corners_elem.pattern.tile_markers and corners_elem.pattern.tile_markers[index] or nil
-            local placed = (corners_elem.wet and corners_elem.wet[index]) or corners_elem.placed[index]
-            self:drawTileCell(pos.x, pos.y, slot, constraint, marker, placed, tile_key, high_contrast)
-        end
-    end
+    self:drawZoneGrid(nil, zone, high_contrast)
 end
 
 function Scriptorium:drawGridPanel(bg, def, high_contrast)
@@ -1245,6 +1252,11 @@ Scriptorium.performPushAll = ScriptoriumActions.performPushAll
 Scriptorium.performPushOne = ScriptoriumActions.performPushOne
 Scriptorium.performStop = ScriptoriumActions.performStop
 Scriptorium.performRestart = ScriptoriumActions.performRestart
+Scriptorium.clearTurnPalette = ScriptoriumActions.clearTurnPalette
+Scriptorium.getTurnPalette = ScriptoriumActions.getTurnPalette
+Scriptorium.ensureTurnPalette = ScriptoriumActions.ensureTurnPalette
+Scriptorium.getLegalPaletteColorsForPlacement = ScriptoriumActions.getLegalPaletteColorsForPlacement
+Scriptorium.getRerollIndices = ScriptoriumActions.getRerollIndices
 Scriptorium.getSelectedDie = ScriptoriumActions.getSelectedDie
 Scriptorium.setSelectedDie = ScriptoriumActions.setSelectedDie
 Scriptorium.refreshDiceLegality = ScriptoriumActions.refreshDiceLegality

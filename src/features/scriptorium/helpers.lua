@@ -105,7 +105,7 @@ end
 
 function Helpers.get_element_display_name(element)
     if element == "TEXT" then
-        return "Text"
+        return "Folio"
     end
     if element == "DROPCAPS" then
         return "Dropcaps/Corners"
@@ -128,7 +128,7 @@ function Helpers.get_unlock_tooltip(folio, element)
         end
     end
     if not idx or idx <= 1 then
-        return "Locked section"
+        return "Locked"
     end
     local prev = folio.ELEMENTS[idx - 1]
     return "Locked: complete " .. Helpers.get_element_display_name(prev)
@@ -174,7 +174,20 @@ function Helpers.get_unusable_dice_count(results)
 end
 
 function Helpers.get_die_color_key(value, value_to_color)
-    return value_to_color[value] or "MARRONE"
+    local direct = value_to_color[value]
+    if direct then
+        return direct
+    end
+    local numeric = tonumber(value)
+    if numeric then
+        numeric = math.floor(numeric)
+        if numeric < 1 then
+            numeric = 1
+        end
+        local wrapped = ((numeric - 1) % 6) + 1
+        return value_to_color[wrapped] or "MARRONE"
+    end
+    return "MARRONE"
 end
 
 return Helpers

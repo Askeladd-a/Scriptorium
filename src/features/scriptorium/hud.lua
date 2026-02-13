@@ -19,6 +19,8 @@ function Hud.new(deps)
         ROSSO = {0.72, 0.20, 0.15},
         BLU = {0.24, 0.37, 0.70},
         GIALLO = {0.85, 0.70, 0.25},
+        VIOLA = {0.56, 0.34, 0.70},
+        BIANCO = {0.93, 0.93, 0.93},
     }
 
     local methods = {}
@@ -61,6 +63,10 @@ function Hud.new(deps)
         love.graphics.setLineWidth(1)
 
         local folio = self.run.current_folio
+        local objective_filled, objective_target = 0, 15
+        if folio.getObjectiveProgress then
+            objective_filled, objective_target = folio:getObjectiveProgress()
+        end
         local values = {
             {"Folio", tostring(self.run.current_folio_index)},
             {"Reputation", tostring(self.run.reputation)},
@@ -99,6 +105,41 @@ function Hud.new(deps)
             local value_rect = {x = cx, y = stack_top + label_h + row_gap, w = col_w, h = value_h}
             draw_text_center(pair[2], value_rect, value_font, color)
         end
+
+        local palette = (self.getTurnPalette and self:getTurnPalette()) or {}
+        if #palette > 0 then
+            local row_h = RuntimeUI.sized(20)
+            local row_y = stats_rect.y + stats_rect.h + RuntimeUI.sized(6)
+            local row_x = stats_rect.x
+            local row_w = stats_rect.w
+
+            love.graphics.setColor(0.24, 0.17, 0.10, 0.86)
+            love.graphics.rectangle("fill", row_x, row_y, row_w, row_h, 5, 5)
+            love.graphics.setColor(0.76, 0.58, 0.40, 0.42)
+            love.graphics.rectangle("line", row_x, row_y, row_w, row_h, 5, 5)
+
+            local label_w = RuntimeUI.sized(120)
+            draw_text_center("Palette turno", {
+                x = row_x + RuntimeUI.sized(8),
+                y = row_y,
+                w = label_w,
+                h = row_h,
+            }, get_font(11, false), {0.95, 0.86, 0.72, 1})
+
+            local chip_size = RuntimeUI.sized(12)
+            local gap = RuntimeUI.sized(7)
+            local start_x = row_x + label_w + RuntimeUI.sized(18)
+            local cy = row_y + (row_h - chip_size) * 0.5
+            for i, color_key in ipairs(palette) do
+                local chip_x = start_x + (i - 1) * (chip_size + gap)
+                local c = DIE_COLOR_SWATCH[color_key] or {0.55, 0.35, 0.20}
+                love.graphics.setColor(c[1], c[2], c[3], 1)
+                love.graphics.rectangle("fill", chip_x, cy, chip_size, chip_size, 3, 3)
+                local line = (color_key == "BIANCO") and {0.15, 0.15, 0.15, 0.9} or {0.96, 0.90, 0.82, 0.75}
+                love.graphics.setColor(line[1], line[2], line[3], line[4])
+                love.graphics.rectangle("line", chip_x, cy, chip_size, chip_size, 3, 3)
+            end
+        end
     end
 
     function methods.drawMarginNotes(self, page, high_contrast)
@@ -106,6 +147,12 @@ function Hud.new(deps)
             return
         end
         local folio = self.run.current_folio
+        local objective_filled, objective_target = 0, 15
+        if folio.getObjectiveProgress then
+            local f, t = folio:getObjectiveProgress()
+            objective_filled = tonumber(f) or 0
+            objective_target = tonumber(t) or 15
+        end
 
         local note = {
             x = page.x + page.w * 0.74,
@@ -128,9 +175,9 @@ function Hud.new(deps)
 
         local body_top = y + RuntimeUI.sized(24)
         local lines = {
-            "Objective: Complete Text + Miniature",
-            "Objective: Keep stains below threshold",
-            "Penalty: Bust saves 1 wet, adds +2 stains",
+            string.format("Objective: fill %d/%d cells", objective_filled, objective_target),
+            "Palette: 3 colors fixed for the turn",
+            "Bust: lose wet buffer and add +1 stain",
         }
         local footer_h = RuntimeUI.sized(36)
         local divider_y = note.y + note.h - footer_h - RuntimeUI.sized(14)
@@ -159,10 +206,10 @@ function Hud.new(deps)
 
         local icons = {
             { short = "S", value = tostring(folio.shield or 0), color = {0.82, 0.68, 0.40, 1}},
-            { short = "R", value = tostring(folio:getTurnRisk()), color = {0.85, 0.36, 0.32, 1}},
-            { short = "G", value = tostring(folio.getSeals and folio:getSeals() or 0), color = {0.74, 0.62, 0.28, 1}},
-            { short = "P", value = tostring(folio.getPreparationGuard and folio:getPreparationGuard() or 0), color = {0.50, 0.74, 0.88, 1}},
-            { short = "T", value = tostring(folio.getToolUsesLeft and folio:getToolUsesLeft() or 0), color = {0.64, 0.88, 0.62, 1}},
+            { short = "W", value = tostring(folio.getWetCount and folio:getWetCount() or 0), color = {0.85, 0.36, 0.32, 1}},
+            { short = "T", value = tostring(folio.turn_count or 0), color = {0.74, 0.62, 0.28, 1}},
+            { short = "B", value = tostring(folio.bust_count or 0), color = {0.50, 0.74, 0.88, 1}},
+            { short = "K", value = tostring(folio.getPatternToken and folio:getPatternToken() or 0), color = {0.64, 0.88, 0.62, 1}},
         }
         local icon_r = RuntimeUI.sized(8)
         local slot_w = (note.w - RuntimeUI.sized(24)) / #icons
@@ -253,7 +300,7 @@ function Hud.new(deps)
             w = left.w,
             h = left_value_h,
         }, left_value_font, {0.95, 0.82, 0.50, 1})
-        draw_text_center("Seals: " .. tostring(seals), {
+        draw_text_center("Turn: " .. tostring(folio.turn_count or 0), {
             x = left.x,
             y = left_top + left_label_h + left_value_h + left_gap * 2,
             w = left.w,
@@ -265,7 +312,7 @@ function Hud.new(deps)
         local summary_font = get_font(12, false)
         local summary_h = summary_font:getHeight()
         draw_text_center(
-            string.format("Wet %d   Risk %d   Sigilli %d", folio:getWetCount(), folio:getTurnRisk(), seals),
+            string.format("Wet %d   Stains %d   Busts %d", folio:getWetCount(), folio.stain_count or 0, folio.bust_count or 0),
             {
                 x = mid.x,
                 y = mid.y + RuntimeUI.sized(5),
@@ -277,6 +324,7 @@ function Hud.new(deps)
         )
 
         self.ui_hit.dice_chips = {}
+        self.ui_hit.palette_color_buttons = nil
         local chips = self.dice_results or {}
         local chip_count = #chips
         local chip_gap = RuntimeUI.sized(6)
@@ -333,9 +381,8 @@ function Hud.new(deps)
         local selected_text = "Select a die to place"
         if selected_die then
             selected_text = string.format(
-                "Selected d%d (%s)",
-                selected_die.value or 0,
-                tostring(selected_die.color_key or "-")
+                "Selected d%d",
+                selected_die.value or 0
             )
         end
         draw_text_center(
@@ -353,8 +400,9 @@ function Hud.new(deps)
         local best_text = "Best: -"
         if focus and focus.best_entry then
             best_text = string.format(
-                "Best: %s  +Q%d / +R%d",
-                tostring(focus.best_entry.element or "-"),
+                "Best: cell [%d,%d]  +Q%d / +R%d",
+                tonumber(focus.best_entry.row) or 0,
+                tonumber(focus.best_entry.col) or 0,
                 focus.best_entry.quality_gain or 0,
                 focus.best_entry.risk_gain or 0
             )
@@ -370,6 +418,45 @@ function Hud.new(deps)
             get_font(11, false),
             {0.92, 0.74, 0.52, 1}
         )
+
+        if self.palette_picker and self.palette_picker.options and #self.palette_picker.options > 0 then
+            local picker = self.palette_picker
+            local options = picker.options
+            local btn_size = RuntimeUI.sized(20)
+            local btn_gap = RuntimeUI.sized(8)
+            local picker_w = (#options * btn_size) + (math.max(0, #options - 1) * btn_gap) + RuntimeUI.sized(14)
+            local picker_h = btn_size + RuntimeUI.sized(10)
+            local px = (picker.anchor_x or (mid.x + mid.w * 0.5)) - picker_w * 0.5
+            local py = (picker.anchor_y or chips_y) - picker_h - RuntimeUI.sized(6)
+            if px < mid.x then px = mid.x end
+            if px + picker_w > (mid.x + mid.w) then px = (mid.x + mid.w) - picker_w end
+            if py < (mid.y + RuntimeUI.sized(2)) then
+                py = chips_y + chip_h + RuntimeUI.sized(6)
+            end
+
+            love.graphics.setColor(0.15, 0.11, 0.07, 0.96)
+            love.graphics.rectangle("fill", px, py, picker_w, picker_h, 6, 6)
+            love.graphics.setColor(0.82, 0.65, 0.42, 0.72)
+            love.graphics.rectangle("line", px, py, picker_w, picker_h, 6, 6)
+
+            self.ui_hit.palette_color_buttons = {}
+            local bx = px + RuntimeUI.sized(7)
+            local by = py + RuntimeUI.sized(5)
+            for i, color_key in ipairs(options) do
+                local rect = {x = bx + (i - 1) * (btn_size + btn_gap), y = by, w = btn_size, h = btn_size}
+                local c = DIE_COLOR_SWATCH[color_key] or {0.55, 0.35, 0.20}
+                local hover = point_in_rect(self.mouse_x, self.mouse_y, rect)
+                love.graphics.setColor(c[1], c[2], c[3], hover and 1 or 0.95)
+                love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, 4, 4)
+                local line = (color_key == "BIANCO") and {0.12, 0.12, 0.12, 0.9} or {0.96, 0.90, 0.82, 0.9}
+                love.graphics.setColor(line[1], line[2], line[3], line[4])
+                love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, 4, 4)
+                self.ui_hit.palette_color_buttons[#self.ui_hit.palette_color_buttons + 1] = {
+                    color = color_key,
+                    rect = rect,
+                }
+            end
+        end
 
         local menu_rect = {
             x = dock_x + dock_w - RuntimeUI.sized(122),
@@ -408,8 +495,8 @@ function Hud.new(deps)
             draw_text_center(title, rect, get_font(10, true), {0.98, 0.92, 0.84, enabled and 1 or 0.5})
         end
 
-        if placing_mode then
-            local can_seal = seals > 0 and selected_die and (not selected_die.used)
+        if placing_mode and seals > 0 then
+            local can_seal = selected_die and (not selected_die.used)
             local seal_y = mid.y + mid.h - RuntimeUI.sized(24)
             local seal_gap = RuntimeUI.sized(6)
             local seal_w = (mid.w - RuntimeUI.sized(16) - seal_gap * 2) / 3
@@ -422,6 +509,10 @@ function Hud.new(deps)
             self.ui_hit.seal_reroll_button = can_seal and reroll_rect or nil
             self.ui_hit.seal_plus_button = can_seal and plus_rect or nil
             self.ui_hit.seal_minus_button = can_seal and minus_rect or nil
+        else
+            self.ui_hit.seal_reroll_button = nil
+            self.ui_hit.seal_plus_button = nil
+            self.ui_hit.seal_minus_button = nil
         end
 
         if placing_mode then
@@ -444,7 +535,7 @@ function Hud.new(deps)
 
             self.ui_hit.stop_button = stop_rect
             self.ui_hit.push_all_button = push_all_rect
-            self.ui_hit.push_one_button = push_one_rect
+            self.ui_hit.push_one_button = nil
             self.ui_hit.prepare_risk_button = can_prepare and prep_risk_rect or nil
             self.ui_hit.prepare_guard_button = can_prepare and prep_guard_rect or nil
             self.ui_hit.restart_button = nil
@@ -490,9 +581,9 @@ function Hud.new(deps)
                 }, subtitle_font, {0.98, 0.93, 0.84, enabled and 0.95 or 0.45})
             end
 
-            draw_action(stop_rect, "STOP", "dry", {0.56, 0.23, 0.16}, {0.86, 0.62, 0.46}, true, 16, 11)
-            draw_action(push_all_rect, "PUSH ALL", "reroll all", {0.22, 0.45, 0.24}, {0.70, 0.88, 0.64}, true, 16, 11)
-            draw_action(push_one_rect, "PUSH 1", "reroll one die", {0.20, 0.36, 0.46}, {0.62, 0.84, 0.92}, true, 16, 11)
+            draw_action(stop_rect, "Stop", "dry", {0.56, 0.23, 0.16}, {0.86, 0.62, 0.46}, true, 16, 11)
+            draw_action(push_all_rect, "Reroll", "remaining dice", {0.22, 0.45, 0.24}, {0.70, 0.88, 0.64}, true, 16, 11)
+            draw_action(push_one_rect, "Palette", "fixed this turn", {0.20, 0.36, 0.46}, {0.62, 0.84, 0.92}, false, 14, 10)
             draw_action(prep_risk_rect, "PREP", "-1 risk", {0.30, 0.25, 0.15}, {0.86, 0.72, 0.44}, can_prepare, 13, 10)
             draw_action(prep_guard_rect, "PREP", "+1 guard", {0.18, 0.29, 0.38}, {0.56, 0.78, 0.94}, can_prepare, 13, 10)
         else

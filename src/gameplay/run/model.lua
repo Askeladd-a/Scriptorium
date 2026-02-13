@@ -2,18 +2,24 @@
 local FolioModule = require("src.gameplay.folio.model")
 local Folio = FolioModule.Folio or FolioModule
 local RuntimeUI = require("src.core.runtime_ui")
-local MVPDecks = require("src.content.mvp_decks")
 
 local Run = {}
 Run.__index = Run
 
+local function build_default_run_setup()
+    return {
+        cards = {},
+        effects = {},
+    }
+end
+
 Run.FOLIO_SET_SIZES = {
-    BIFOLIO = 2,
-    DUERNO = 4,
-    TERNIONE = 6,
-    QUATERNIONE = 8,
-    QUINTERNO = 10,
-    SESTERNO = 12,
+    BIFOLIO = 1,
+    DUERNO = 1,
+    TERNIONE = 1,
+    QUATERNIONE = 1,
+    QUINTERNO = 1,
+    SESTERNO = 1,
 }
 
 ---@param folio_set_type string Folio set type
@@ -22,7 +28,7 @@ function Run.new(folio_set_type, seed)
     local self = setmetatable({}, Run)
     
     self.folio_set = folio_set_type or "BIFOLIO"
-    self.total_folios = Run.FOLIO_SET_SIZES[self.folio_set] or 2
+    self.total_folios = 1
     
     self.seed = seed or os.time()
     math.randomseed(self.seed)
@@ -30,7 +36,7 @@ function Run.new(folio_set_type, seed)
         love.math.setRandomSeed(self.seed)
     end
     log("[Run] Seed: " .. self.seed)
-    self.rule_setup = MVPDecks.drawRunSetup(self.seed + 101)
+    self.rule_setup = build_default_run_setup()
     
     self.current_folio_index = 1
     self.current_folio = Folio.new(self.folio_set, self.seed + 1, self.rule_setup)
@@ -60,30 +66,18 @@ function Run:nextFolio()
             self.current_folio_index, reward.coins, reward.reputation))
         
         table.insert(self.completed_folios, self.current_folio)
-        self.current_folio_index = self.current_folio_index + 1
-        
-        if self.current_folio_index > self.total_folios then
-            self.victory = true
-            log("[Run] VICTORY! Folio set completed!")
-            return true, "victory"
-        end
-        
-        self.current_folio = Folio.new(self.folio_set, self.seed + self.current_folio_index, self.rule_setup)
-        return true, "next"
+        self.victory = true
+        log("[Run] VICTORY! Folio completed!")
+        return true, "victory"
         
     elseif self.current_folio.busted then
         local rep_loss = 3
         self.reputation = self.reputation - rep_loss
         log(string.format("[Run] Folio BUST! -%d reputation (now: %d)", rep_loss, self.reputation))
         
-        if self.reputation <= 0 then
-            self.game_over = true
-            log("[Run] GAME OVER! Reputation depleted!")
-            return false, "game_over"
-        end
-        
-        self.current_folio = Folio.new(self.folio_set, self.seed + self.current_folio_index + 1000, self.rule_setup)
-        return true, "retry"
+        self.game_over = true
+        log("[Run] GAME OVER! Folio busted!")
+        return false, "game_over"
     end
     
     return false, "in_progress"
@@ -91,25 +85,19 @@ end
 
 function Run:calculateFolioReward()
     local reward = {coins = 30, reputation = 0}
-    
     local folio = self.current_folio
-    for elem, bonus in pairs(Folio.BONUS) do
-        if folio.elements[elem].completed then
-            reward.coins = reward.coins + (bonus.coins or 0)
-            reward.reputation = reward.reputation + (bonus.reputation or 0)
-        end
+    if folio and folio.elements and folio.elements.TEXT and folio.elements.TEXT.completed then
+        local bonus = Folio.BONUS.TEXT or {}
+        reward.coins = reward.coins + (bonus.coins or 0)
+        reward.reputation = reward.reputation + (bonus.reputation or 0)
     end
-    
-    if folio.stain_count < 2 then
-        reward.reputation = reward.reputation + 2
-        log("[Run] Pardon! +2 reputation")
+    if folio and folio.stain_count <= 1 then
+        reward.reputation = reward.reputation + 1
     end
-    
     return reward
 end
 
 function Run:getStatus()
-    local cards = self.rule_setup and self.rule_setup.cards or {}
     return {
         folio_set = self.folio_set,
         folio = string.format("%d/%d", self.current_folio_index, self.total_folios),
@@ -118,11 +106,6 @@ function Run:getStatus()
         seed = self.seed,
         game_over = self.game_over,
         victory = self.victory,
-        cards = {
-            commission = cards.commission and cards.commission.name or nil,
-            parchment = cards.parchment and cards.parchment.name or nil,
-            tool = cards.tool and cards.tool.name or nil,
-        },
     }
 end
 

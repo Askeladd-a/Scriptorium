@@ -25,25 +25,49 @@ end
 
 
 local function graphics_transform(ox, oy, xx, xy, yx, yy)
-  
-  local ex, ey, fx,fy = xx-ox, xy-oy, yx-ox, yy-oy
-  if ex*fy<ey*fx then ex,ey,fx,fy=fx,fy,ex,ey end
-  local e,f = math.sqrt(ex*ex+ey*ey), math.sqrt(fx*fx+fy*fy)
-  
-  ex,ey = ex/e, ey/e
-  fx,fy = fx/f, fy/f
-  
-  local desiredOrientation=math.atan2(ey+fy,ex+fx)
-  local desiredAngle=math.acos(ex*fx+ey*fy)/2
-  local z=math.tan(desiredAngle)
-  local distortion=math.sqrt((1+z*z)/2)
-  
+  local function finite(v)
+    return v == v and v > -1e20 and v < 1e20
+  end
+
+  local ex, ey, fx, fy = xx - ox, xy - oy, yx - ox, yy - oy
+  if ex * fy < ey * fx then ex, ey, fx, fy = fx, fy, ex, ey end
+
+  local e = math.sqrt(ex * ex + ey * ey)
+  local f = math.sqrt(fx * fx + fy * fy)
+  if e < 1e-6 or f < 1e-6 then
+    return false
+  end
+
+  ex, ey = ex / e, ey / e
+  fx, fy = fx / f, fy / f
+
+  local dot = ex * fx + ey * fy
+  if dot > 0.9999 then dot = 0.9999 end
+  if dot < -0.9999 then dot = -0.9999 end
+
+  local desiredOrientation = math.atan2(ey + fy, ex + fx)
+  local desiredAngle = math.acos(dot) / 2
+  local z = math.tan(desiredAngle)
+
+  if not finite(desiredOrientation) or not finite(z) then
+    return false
+  end
+
+  if z > 4 then z = 4 end
+  if z < -4 then z = -4 end
+
+  local distortion = math.sqrt((1 + z * z) / 2)
+  if distortion < 1e-6 or not finite(distortion) then
+    return false
+  end
+
   love.graphics.translate(ox, oy)
   love.graphics.rotate(desiredOrientation)
   love.graphics.scale(1, z)
-  love.graphics.rotate(-math.pi/4)
-  love.graphics.scale(e/distortion,f/distortion)
+  love.graphics.rotate(-math.pi / 4)
+  love.graphics.scale(e / distortion, f / distortion)
 
+  return true
 end
 rawset(love.graphics, "transform", graphics_transform)
 
@@ -117,6 +141,7 @@ render={}
 local tray_wood_texture = nil
 local board_mesh_cache = {key = nil, mesh = nil, corners = nil}
 local tray_border_cache = {key = nil, draw_calls = nil}
+local USE_TEXTURED_TRAY_BORDER = false
 
 local function fmt4(n)
   return string.format("%.4f", tonumber(n) or 0)
@@ -152,6 +177,49 @@ local function current_light_signature()
   return "light:nil"
 end
 
+local function projected_point_valid(p)
+  if not p then
+    return false
+  end
+  local px, py, pz, scale = p[1], p[2], p[3], p[4]
+  if not px or not py or not pz or not scale then
+    return false
+  end
+  if px ~= px or py ~= py or pz ~= pz then
+    return false
+  end
+  -- pz is -cameraSpaceZ in view.project.
+  -- Valid points in front of camera have negative pz; near-zero/positive values
+  -- create unstable projections and giant screen-space artifacts.
+  if pz >= -0.05 then
+    return false
+  end
+  if scale <= 0 or scale ~= scale then
+    return false
+  end
+  if scale >= 12 then
+    return false
+  end
+  if math.abs(px) > 5000 or math.abs(py) > 5000 then
+    return false
+  end
+  return true
+end
+
+local function projected_quad_valid(c1, c2, c3, c4)
+  if not (projected_point_valid(c1) and projected_point_valid(c2) and projected_point_valid(c3) and projected_point_valid(c4)) then
+    return false
+  end
+  local min_x = math.min(c1[1], c2[1], c3[1], c4[1])
+  local max_x = math.max(c1[1], c2[1], c3[1], c4[1])
+  local min_y = math.min(c1[2], c2[2], c3[2], c4[2])
+  local max_y = math.max(c1[2], c2[2], c3[2], c4[2])
+  if (max_x - min_x) > 5000 or (max_y - min_y) > 5000 then
+    return false
+  end
+  return true
+end
+
 local function safe_release_mesh(mesh)
   if mesh and mesh.release then
     pcall(function()
@@ -170,14 +238,21 @@ local function release_tray_draw_calls(draw_calls)
 end
 
 function render.zbuffer(z,action)
-  table.insert(render,{z,action})
+  render._seq = (render._seq or 0) + 1
+  table.insert(render,{z,action,render._seq})
 end
 function render.paint()
-  table.sort(render,function(a,b) return a[1]<b[1] end)
+  table.sort(render,function(a,b)
+    if a[1] == b[1] then
+      return (a[3] or 0) < (b[3] or 0)
+    end
+    return a[1] < b[1]
+  end)
   for i=1,#render do render[i][2]() end
 end
 function render.clear()
   table.clear(render)
+  render._seq = 0
 end
 
 function render.board(image, light_fn, x1, x2, y1, y2)
@@ -185,7 +260,7 @@ function render.board(image, light_fn, x1, x2, y1, y2)
 
   render.board_extents = {x1,x2,y1,y2}
 
-  local subdiv = 8
+  local subdiv = 1
   
   local tex_path = image(0, 0)
   local tex = graphics_get_image(tex_path)
@@ -230,13 +305,24 @@ function render.board(image, light_fn, x1, x2, y1, y2)
         local p3 = {view.project(wx2, wy2, 0)}
         local p4 = {view.project(wx1, wy2, 0)}
 
-        table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
-        table.insert(vertices, {p2[1], p2[2], cu2, cv1, r, g, b, 1})
-        table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
-        table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
-        table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
-        table.insert(vertices, {p4[1], p4[2], cu1, cv2, r, g, b, 1})
+        if projected_quad_valid(p1, p2, p3, p4) then
+          table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
+          table.insert(vertices, {p2[1], p2[2], cu2, cv1, r, g, b, 1})
+          table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
+          table.insert(vertices, {p1[1], p1[2], cu1, cv1, r, g, b, 1})
+          table.insert(vertices, {p3[1], p3[2], cu2, cv2, r, g, b, 1})
+          table.insert(vertices, {p4[1], p4[2], cu1, cv2, r, g, b, 1})
+        end
       end
+    end
+
+    if #vertices < 3 then
+      local fallback = {
+        {0, 0, 0, 0, r, g, b, 1},
+        {1, 0, 1, 0, r, g, b, 1},
+        {0, 1, 0, 1, r, g, b, 1},
+      }
+      vertices = fallback
     end
 
     local mesh = love.graphics.newMesh(vertices, "triangles", "stream")
@@ -275,43 +361,118 @@ function render.bulb(action)
 end
 
 function render.die(action, die, body)
-  local cam={view.get()}
+  local cam=vector{view.get()}
   local projected={}
+  local world={}
+  local function draw_face_polygon(points, vertex_count)
+    if vertex_count == 4 then
+      -- Draw quads as two triangles to avoid self-intersection artifacts after projection.
+      love.graphics.polygon("fill", points[1], points[2], points[3], points[4], points[5], points[6])
+      love.graphics.polygon("fill", points[1], points[2], points[5], points[6], points[7], points[8])
+      return
+    end
+    love.graphics.polygon("fill", unpack(points))
+  end
   for i=1,#body do
-    table.insert(projected, {view.project(unpack(body[i]+body.position))})
+    local wp = body[i] + body.position
+    world[i] = wp
+    table.insert(projected, {view.project(unpack(wp))})
   end
 
   for i=1,#die.faces do
     local face=die.faces[i]
-    local xy,z,c={},0,vector()
+    local xy,z={},0
+    local center_world=vector()
+    local face_world = {}
+    local face_ok = true
     for j=1,#face do
-      c=c+body[face[j]]
+      local idx = face[j]
+      local wv = world[idx]
+      center_world = center_world + wv
+      face_world[j] = wv
       local p = projected[face[j]]
+      if not projected_point_valid(p) then
+        face_ok = false
+        break
+      end
       table.insert(xy,p[1])
       table.insert(xy,p[2])
       z=z+p[3]
     end
-    z=z/#face
-    c=c/#face
-    
-    local strength=die.material(c+body.position, c:norm())
-    local baseColor = (die.faceColors and die.faceColors[i]) or die.color
-    local color={ baseColor[1]*strength, baseColor[2]*strength, baseColor[3]*strength, baseColor[4] or 255 }
-    local text={die.text[1]*strength,die.text[2]*strength,die.text[3]*strength}
-    local front=c..(1*c+body.position-cam)<=0
-    action(z, function()
-      if front then 
-        love.graphics.setColor(unpack(color))
-        love.graphics.polygon("fill",unpack(xy))
-        love.graphics.setColor(unpack(text))
-        die.image(i,unpack(xy))
-      elseif color[4] and color[4]<255 then
-        love.graphics.setColor(unpack(text))
-        die.image(i,unpack(xy))
-        love.graphics.setColor(unpack(color))
-        love.graphics.polygon("fill",unpack(xy))
+    if face_ok then
+      local min_x, max_x = math.huge, -math.huge
+      local min_y, max_y = math.huge, -math.huge
+      for p = 1, #xy, 2 do
+        local x = xy[p]
+        local y = xy[p + 1]
+        if x < min_x then min_x = x end
+        if x > max_x then max_x = x end
+        if y < min_y then min_y = y end
+        if y > max_y then max_y = y end
       end
-    end) 
+      local span_x = max_x - min_x
+      local span_y = max_y - min_y
+      local max_face_span = 1.25
+      local max_abs_coord = 3.0
+      if min_x < -max_abs_coord or max_x > max_abs_coord or min_y < -max_abs_coord or max_y > max_abs_coord then
+        face_ok = false
+      end
+      if span_x < 0.0002 or span_y < 0.0002 then
+        face_ok = false
+      end
+      if span_x > max_face_span or span_y > max_face_span then
+        face_ok = false
+      end
+    end
+
+    if face_ok then
+      z=z/#face
+      center_world = center_world / #face
+
+      local normal = nil
+      if #face_world >= 3 then
+        local edge1 = face_world[2] - face_world[1]
+        local edge2 = face_world[3] - face_world[1]
+        normal = edge1 ^ edge2
+        local nabs = normal:abs()
+        if nabs < 1e-6 then
+          face_ok = false
+        else
+          normal = normal / nabs
+          -- Force outward orientation independent of vertex winding order.
+          local outward = center_world - body.position
+          if (normal..outward) < 0 then
+            normal = -normal
+          end
+        end
+      else
+        face_ok = false
+      end
+      if not face_ok then
+        goto continue_face
+      end
+
+      local strength=die.material(center_world, normal)
+      local baseColor = (die.faceColors and die.faceColors[i]) or die.color
+      local color={ baseColor[1]*strength, baseColor[2]*strength, baseColor[3]*strength, baseColor[4] or 255 }
+      local text={die.text[1]*strength,die.text[2]*strength,die.text[3]*strength}
+      local to_cam = cam - center_world
+      local front = (normal..to_cam) > 0.0005
+      action(z, function()
+        if front then 
+          love.graphics.setColor(unpack(color))
+          draw_face_polygon(xy, #face)
+          love.graphics.setColor(unpack(text))
+          die.image(i,unpack(xy))
+        elseif color[4] and color[4]<255 then
+          love.graphics.setColor(unpack(text))
+          die.image(i,unpack(xy))
+          love.graphics.setColor(unpack(color))
+          draw_face_polygon(xy, #face)
+        end
+      end)
+    end
+    ::continue_face::
   end
 
   
@@ -450,12 +611,14 @@ function render.tray_border(action, border_width, border_height, border_color)
   
   local function lerp(a, b, t) return a + (b - a) * t end
   
-  if not tray_wood_texture then
-    local ok, img = pcall(love.graphics.newImage, "resources/textures/wood.png")
-    if ok then tray_wood_texture = img end
+  local tex = nil
+  if USE_TEXTURED_TRAY_BORDER then
+    if not tray_wood_texture then
+      local ok, img = pcall(love.graphics.newImage, "resources/textures/wood.png")
+      if ok then tray_wood_texture = img end
+    end
+    tex = tray_wood_texture
   end
-  
-  local tex = tray_wood_texture
   local key = table.concat({
     "tray-border",
     fmt4(x1), fmt4(x2), fmt4(y1), fmt4(y2),
@@ -471,25 +634,44 @@ function render.tray_border(action, border_width, border_height, border_color)
     local draw_calls = {}
 
     local function draw_quad(c1, c2, c3, c4, color, shade)
-      local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
+      if not projected_quad_valid(c1, c2, c3, c4) then
+        return
+      end
+      local col = {color[1] * shade, color[2] * shade, color[3] * shade, 255}
       table.insert(draw_calls, {
-        z = z_min,
-        points = {c1[1], c1[2], c2[1], c2[2], c3[1], c3[2], c4[1], c4[2]},
-        color = {color[1] * shade, color[2] * shade, color[3] * shade, 255},
+        z = math.min(c1[3], c2[3], c3[3]),
+        points = {c1[1], c1[2], c2[1], c2[2], c3[1], c3[2]},
+        color = col,
+      })
+      table.insert(draw_calls, {
+        z = math.min(c1[3], c3[3], c4[3]),
+        points = {c1[1], c1[2], c3[1], c3[2], c4[1], c4[2]},
+        color = col,
       })
     end
 
     local function draw_textured_quad(c1, c2, c3, c4, color, shade, texture, u1, v1, u2, v2)
+      if not projected_quad_valid(c1, c2, c3, c4) then
+        return
+      end
       u1 = u1 or 0; v1 = v1 or 0; u2 = u2 or 1; v2 = v2 or 1
       local z_min = math.min(c1[3], c2[3], c3[3], c4[3])
-      local r, g, b = color[1] * shade / 255, color[2] * shade / 255, color[3] * shade / 255
-      local vertices = {
+      local shade_norm = shade or 1
+      if shade_norm > 1 then
+        shade_norm = shade_norm / 255
+      end
+      local r = (color[1] / 255) * shade_norm
+      local g = (color[2] / 255) * shade_norm
+      local b = (color[3] / 255) * shade_norm
+      local vtx = {
         {c1[1], c1[2], u1, v1, r, g, b, 1},
         {c2[1], c2[2], u2, v1, r, g, b, 1},
         {c3[1], c3[2], u2, v2, r, g, b, 1},
+        {c1[1], c1[2], u1, v1, r, g, b, 1},
+        {c3[1], c3[2], u2, v2, r, g, b, 1},
         {c4[1], c4[2], u1, v2, r, g, b, 1},
       }
-      local mesh = love.graphics.newMesh(vertices, "fan", "stream")
+      local mesh = love.graphics.newMesh(vtx, "triangles", "stream")
       mesh:setTexture(texture)
       table.insert(draw_calls, {
         z = z_min,

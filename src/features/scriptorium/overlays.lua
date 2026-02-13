@@ -56,9 +56,7 @@ function Overlays.new(deps)
 
         local w, h = ui_dimensions()
         local folio = self.run and self.run.current_folio or nil
-        local cards = (folio and folio.getRuleCards and folio:getRuleCards()) or {}
-        local parity = (folio and folio.border_parity) or "EVEN"
-        local parity_text = (parity == "EVEN") and "even" or "odd"
+        local pattern_name = folio and folio.getPatternName and folio:getPatternName() or "Window"
 
         love.graphics.setColor(0, 0, 0, 0.70)
         love.graphics.rectangle("fill", 0, 0, w, h)
@@ -89,52 +87,32 @@ function Overlays.new(deps)
             h = RuntimeUI.sized(24),
         }, get_font(14, false), {0.93, 0.90, 0.84, 1})
 
-        local cards_area_y = box_y + RuntimeUI.sized(96)
-        local cards_area_h = box_h - RuntimeUI.sized(184)
-        local gap = RuntimeUI.sized(12)
-        local card_w = (box_w - RuntimeUI.sized(40) - gap * 2) / 3
-        local card_h = cards_area_h
-        local start_x = box_x + RuntimeUI.sized(20)
-
-        local entries = {
-            { title = "Commission", card = cards.commission },
-            { title = "Parchment", card = cards.parchment },
-            { title = "Tool", card = cards.tool },
+        local notes = {
+            "Single folio: one 4x5 Sagrada-style window.",
+            "Turn = 6d6 values + 3 unique colors (fixed this turn).",
+            "Reroll affects only unplaced dice.",
+            "Bust: if no legal move exists, wet buffer is lost +1 stain.",
+            "Window loaded: " .. tostring(pattern_name),
         }
-
-        for i, entry in ipairs(entries) do
-            local cx = start_x + (i - 1) * (card_w + gap)
-            local cy = cards_area_y
-            love.graphics.setColor(0.30, 0.21, 0.13, 0.90)
-            love.graphics.rectangle("fill", cx, cy, card_w, card_h, 8, 8)
-            love.graphics.setColor(0.72, 0.55, 0.35, 0.60)
-            love.graphics.rectangle("line", cx, cy, card_w, card_h, 8, 8)
-
-            draw_text_center(entry.title, {
-                x = cx,
-                y = cy + RuntimeUI.sized(8),
-                w = card_w,
-                h = RuntimeUI.sized(22),
-            }, get_font(16, false), {0.95, 0.84, 0.58, 1})
-
-            local card_name = (entry.card and entry.card.name) or "-"
-            draw_text_center(card_name, {
-                x = cx + RuntimeUI.sized(8),
-                y = cy + RuntimeUI.sized(34),
-                w = card_w - RuntimeUI.sized(16),
-                h = RuntimeUI.sized(42),
-            }, get_font(18, false), {0.96, 0.92, 0.84, 1})
-
-            love.graphics.setColor(0.62, 0.46, 0.30, 0.42)
-            love.graphics.line(cx + RuntimeUI.sized(10), cy + RuntimeUI.sized(82), cx + card_w - RuntimeUI.sized(10), cy + RuntimeUI.sized(82))
-
-            local rule_text = (entry.card and entry.card.text) or "No rule."
-            love.graphics.setFont(get_font(13, false))
-            love.graphics.setColor(0.94, 0.90, 0.82, 1)
-            love.graphics.printf(rule_text, cx + RuntimeUI.sized(10), cy + RuntimeUI.sized(92), card_w - RuntimeUI.sized(20), "left")
+        local panel_x = box_x + RuntimeUI.sized(20)
+        local panel_y = box_y + RuntimeUI.sized(96)
+        local panel_w = box_w - RuntimeUI.sized(40)
+        local panel_h = box_h - RuntimeUI.sized(184)
+        love.graphics.setColor(0.30, 0.21, 0.13, 0.90)
+        love.graphics.rectangle("fill", panel_x, panel_y, panel_w, panel_h, 8, 8)
+        love.graphics.setColor(0.72, 0.55, 0.35, 0.60)
+        love.graphics.rectangle("line", panel_x, panel_y, panel_w, panel_h, 8, 8)
+        local line_h = RuntimeUI.sized(32)
+        for i, text in ipairs(notes) do
+            draw_text_center(text, {
+                x = panel_x + RuntimeUI.sized(12),
+                y = panel_y + RuntimeUI.sized(16) + (i - 1) * line_h,
+                w = panel_w - RuntimeUI.sized(24),
+                h = RuntimeUI.sized(24),
+            }, get_font(15, false), {0.96, 0.92, 0.84, 1})
         end
 
-        draw_text_center("Borders for this run: only " .. parity_text .. " values", {
+        draw_text_center("Start when ready.", {
             x = box_x + RuntimeUI.sized(20),
             y = box_y + box_h - RuntimeUI.sized(84),
             w = box_w - RuntimeUI.sized(40),

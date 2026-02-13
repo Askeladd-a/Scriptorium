@@ -66,51 +66,20 @@ function Layout.new(deps)
         local w = page.w
         local h = page.h
 
-        local text = {
+        local main = {
             element = "TEXT",
-            title = "Text",
+            title = "Folio",
             rect = {
-                x = x + w * 0.24,
-                y = y + h * 0.13,
-                w = w * 0.42,
-                h = h * 0.55,
+                x = x + w * 0.12,
+                y = y + h * 0.16,
+                w = w * 0.76,
+                h = h * 0.70,
             }
         }
-        local dropcaps = {
-            element = "DROPCAPS",
-            title = "Dropcaps/Corners",
-            rect = {
-                x = x + w * 0.08,
-                y = y + h * 0.15,
-                w = w * 0.18,
-                h = h * 0.28,
-            }
-        }
-        local miniature = {
-            element = "MINIATURE",
-            title = "Miniature",
-            rect = {
-                x = x + w * 0.69,
-                y = y + h * 0.18,
-                w = w * 0.23,
-                h = h * 0.46,
-            }
-        }
-        local borders = {
-            element = "BORDERS",
-            title = "Borders",
-            rect = {
-                x = x + w * 0.24,
-                y = y + h * 0.71,
-                w = w * 0.48,
-                h = h * 0.21,
-            }
-        }
+
         return {
-            text = text,
-            dropcaps = dropcaps,
-            miniature = miniature,
-            borders = borders,
+            main = main,
+            ordered = {main},
         }
     end
 

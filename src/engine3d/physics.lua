@@ -95,6 +95,8 @@ function box:update(dt)
         local vertices_on_ground = 0
         local ground_z = 0.05
         local ground_vertices_z = {}
+        local required_flat_vertices = s.flat_face_vertices or 4
+        local flat_z_tolerance = s.flat_z_tolerance or 0.03
         for k=1,#s do
           local vertex_world_z = s[k][3] + s.position[3]
           if vertex_world_z <= ground_z then
@@ -104,19 +106,21 @@ function box:update(dt)
         end
         
         local is_flat = false
-        if vertices_on_ground >= 4 and #ground_vertices_z >= 4 then
+        if vertices_on_ground >= required_flat_vertices and #ground_vertices_z >= required_flat_vertices then
           local z_min = math.huge
           local z_max = -math.huge
           for _, z in ipairs(ground_vertices_z) do
             z_min = math.min(z_min, z)
             z_max = math.max(z_max, z)
           end
-          is_flat = (z_max - z_min) < 0.03
+          is_flat = (z_max - z_min) < flat_z_tolerance
         end
         
         local v_mag = s.velocity:abs()
         local w_mag = s.angular:abs()
-        if is_flat and v_mag < 0.20 and w_mag < 0.15 then
+        local settle_linear = s.settle_linear or 0.20
+        local settle_angular = s.settle_angular or 0.15
+        if is_flat and v_mag < settle_linear and w_mag < settle_angular then
           s.velocity = vector{0,0,0}
           s.angular = vector{0,0,0}
           s.asleep = true
