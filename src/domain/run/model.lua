@@ -1,7 +1,5 @@
--- src/game/run.lua
--- Gestisce una run completa (fascicolo di N folii)
 
-local FolioModule = require("src.game.folio")
+local FolioModule = require("src.domain.folio.model")
 local Folio = FolioModule.Folio or FolioModule
 local RuntimeUI = require("src.core.runtime_ui")
 local MVPDecks = require("src.content.mvp_decks")
@@ -9,8 +7,7 @@ local MVPDecks = require("src.content.mvp_decks")
 local Run = {}
 Run.__index = Run
 
--- Tipi di fascicolo e numero di folii
-Run.FASCICOLI = {
+Run.FOLIO_SET_SIZES = {
     BIFOLIO = 2,
     DUERNO = 4,
     TERNIONE = 6,
@@ -19,50 +16,42 @@ Run.FASCICOLI = {
     SESTERNO = 12,
 }
 
---- Crea una nuova run
----@param fascicolo_type string Tipo di fascicolo
----@param seed number Seed per RNG riproducibile (opzionale)
-function Run.new(fascicolo_type, seed)
+---@param folio_set_type string Folio set type
+---@param seed number Seed for reproducible RNG (optional)
+function Run.new(folio_set_type, seed)
     local self = setmetatable({}, Run)
     
-    self.fascicolo = fascicolo_type or "BIFOLIO"
-    self.total_folii = Run.FASCICOLI[self.fascicolo] or 2
+    self.folio_set = folio_set_type or "BIFOLIO"
+    self.total_folios = Run.FOLIO_SET_SIZES[self.folio_set] or 2
     
-    -- Seed riproducibile
     self.seed = seed or os.time()
     math.randomseed(self.seed)
     if love and love.math then
         love.math.setRandomSeed(self.seed)
     end
     log("[Run] Seed: " .. self.seed)
-    self.rule_setup = MVPDecks.draw_run_setup(self.seed + 101)
+    self.rule_setup = MVPDecks.drawRunSetup(self.seed + 101)
     
-    -- Stato run
     self.current_folio_index = 1
-    self.current_folio = Folio.new(self.fascicolo, self.seed + 1, self.rule_setup)
-    self.completed_folii = {}
+    self.current_folio = Folio.new(self.folio_set, self.seed + 1, self.rule_setup)
+    self.completed_folios = {}
     
-    -- Risorse player
-    self.reputation = 20  -- HP della run
+    self.reputation = 20
     self.coins = 0
     
-    -- Inventario (pigmenti, leganti scelti)
     self.inventory = {
         pigments = {},
         binders = {},
     }
     
-    -- Stato
     self.game_over = false
     self.victory = false
     
     return self
 end
 
---- Avanza al folio successivo
 function Run:nextFolio()
     if self.current_folio.completed then
-        -- Calcola reward
         local reward = self:calculateFolioReward()
         self.coins = self.coins + reward.coins
         self.reputation = self.reputation + reward.reputation
@@ -70,44 +59,38 @@ function Run:nextFolio()
         log(string.format("[Run] Folio %d completed! +%d coins, +%d rep", 
             self.current_folio_index, reward.coins, reward.reputation))
         
-        table.insert(self.completed_folii, self.current_folio)
+        table.insert(self.completed_folios, self.current_folio)
         self.current_folio_index = self.current_folio_index + 1
         
-        -- Victory check
-        if self.current_folio_index > self.total_folii then
+        if self.current_folio_index > self.total_folios then
             self.victory = true
             log("[Run] VICTORY! Folio set completed!")
             return true, "victory"
         end
         
-        -- Nuovo folio
-        self.current_folio = Folio.new(self.fascicolo, self.seed + self.current_folio_index, self.rule_setup)
+        self.current_folio = Folio.new(self.folio_set, self.seed + self.current_folio_index, self.rule_setup)
         return true, "next"
         
     elseif self.current_folio.busted then
-        -- Folio perso
         local rep_loss = 3
         self.reputation = self.reputation - rep_loss
         log(string.format("[Run] Folio BUST! -%d reputation (now: %d)", rep_loss, self.reputation))
         
-        -- Check game over
         if self.reputation <= 0 then
             self.game_over = true
             log("[Run] GAME OVER! Reputation depleted!")
             return false, "game_over"
         end
         
-        -- Nuovo folio (stessa posizione, si riprova)
-        self.current_folio = Folio.new(self.fascicolo, self.seed + self.current_folio_index + 1000, self.rule_setup)
+        self.current_folio = Folio.new(self.folio_set, self.seed + self.current_folio_index + 1000, self.rule_setup)
         return true, "retry"
     end
     
     return false, "in_progress"
 end
 
---- Calcola reward per folio completato
 function Run:calculateFolioReward()
-    local reward = {coins = 30, reputation = 0}  -- Base
+    local reward = {coins = 30, reputation = 0}
     
     local folio = self.current_folio
     for elem, bonus in pairs(Folio.BONUS) do
@@ -117,7 +100,6 @@ function Run:calculateFolioReward()
         end
     end
     
-    -- Pardon: bonus se pochi stain e nessun peccato
     if folio.stain_count < 2 then
         reward.reputation = reward.reputation + 2
         log("[Run] Pardon! +2 reputation")
@@ -126,12 +108,11 @@ function Run:calculateFolioReward()
     return reward
 end
 
---- Stato per UI
 function Run:getStatus()
     local cards = self.rule_setup and self.rule_setup.cards or {}
     return {
-        fascicolo = self.fascicolo,
-        folio = string.format("%d/%d", self.current_folio_index, self.total_folii),
+        folio_set = self.folio_set,
+        folio = string.format("%d/%d", self.current_folio_index, self.total_folios),
         reputation = self.reputation,
         coins = self.coins,
         seed = self.seed,
@@ -145,9 +126,7 @@ function Run:getStatus()
     }
 end
 
--- Wrapper modulo runtime (entrypoint UI/controller per una run)
 local run_module = {}
-local Run = Run
 local current_run = nil
 local run_title_font = nil
 local run_body_font = nil
@@ -169,7 +148,6 @@ function run_module.exit()
 end
 
 function run_module.update(dt)
-    -- Placeholder: nessuna logica temporale
 end
 
 function run_module.draw()
@@ -194,7 +172,7 @@ function run_module.draw()
     if current_run then
         local status = current_run:getStatus()
         love.graphics.setFont(run_body_font)
-        love.graphics.print("Folio Set: " .. status.fascicolo, 60, 140)
+        love.graphics.print("Folio Set: " .. status.folio_set, 60, 140)
         love.graphics.print("Folio: " .. status.folio, 60, 160)
         love.graphics.print("Reputation: " .. status.reputation, 60, 180)
         love.graphics.print("Coins: " .. status.coins, 60, 200)
@@ -232,7 +210,6 @@ end
 
 
 function run_module.keypressed(_key, _scancode, _isrepeat)
-    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function run_module.mousepressed(x, y, button)
@@ -250,11 +227,9 @@ function run_module.mousepressed(x, y, button)
     end
 
     if run_ui.next and x >= run_ui.next.x and x <= run_ui.next.x + run_ui.next.w and y >= run_ui.next.y and y <= run_ui.next.y + run_ui.next.h then
-        -- Simula completamento folio per test
         if current_run then
             local completed, status = current_run:nextFolio()
             if completed and status == "next" and _G.set_module then
-                -- Passa al modulo reward
                 _G.set_module("reward", {run = current_run})
             end
         end

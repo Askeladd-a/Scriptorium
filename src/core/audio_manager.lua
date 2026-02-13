@@ -1,5 +1,3 @@
--- src/core/audio_manager.lua
--- Gestione semplice SFX UI, rispettando le impostazioni audio utente.
 
 local SettingsState = require("src.core.settings_state")
 

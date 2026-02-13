@@ -1,28 +1,19 @@
--- src/content/binders.lua
--- Historical binder/medium database based on "The Medieval Manuscript" (Charles)
--- Includes binders for painting, inks, and gilding
 
-local Binders = {}
+local BinderCatalog = {}
 
--- ══════════════════════════════════════════════════════════════════
--- BINDER DATABASE
--- ══════════════════════════════════════════════════════════════════
-Binders.data = {
+BinderCatalog.data = {
 
-    -- ══════════════════════════════════════════════════════════════
-    -- PRIMARY PAINT BINDERS
-    -- ══════════════════════════════════════════════════════════════
     
     GOMMA_ARABICA = {
         name = "Gum Arabic",
         name_en = "Gum Arabic",
         tier = 1,
         cost = 0,
-        origin = "vegetable_gum",  -- Acacia resin
+        origin = "vegetable_gum",
         function_desc = "Primary water-soluble binder for pigments and inks; gives control and transparency.",
         preparation = "Dissolve cleaned acacia tears in warm water, strain, and rest briefly before use.",
         uses = {"pigments", "inks", "shell_gold"},
-        risks = nil,  -- No known risk discussed
+        risks = nil,
         effects = {},
         description = "A standard medieval medium for paints and shell gold, valued for clean flow and stable film.",
     },
@@ -38,8 +29,8 @@ Binders.data = {
         uses = {"pigments", "shell_gold"},
         risks = nil,
         effects = {
-            flexible = true,  -- Keeps color flexible
-            on_stain = "reduce",  -- Reduces stain impact
+            flexible = true,
+            on_stain = "reduce",
         },
         description = "Used sparingly to keep mixtures workable in dry conditions and soften brittle passages.",
     },
@@ -53,9 +44,9 @@ Binders.data = {
         function_desc = "Protein binder from egg white, especially useful for gilding and glossy details.",
         preparation = "Whisk egg white, let foam settle, then decant the clear liquid phase.",
         uses = {"gold_leaf", "gesso", "pigments"},
-        risks = "foam_bubbles",  -- Watch for foam and bubbles
+        risks = "foam_bubbles",
         effects = {
-            shine = true,  -- Glossy finish
+            shine = true,
             gold_adhesion = true,
         },
         description = "Produces a bright, tight surface but can trap bubbles if prepared too aggressively.",
@@ -72,7 +63,7 @@ Binders.data = {
         uses = {"pigments"},
         risks = nil,
         effects = {
-            durability = 1,  -- More durable colors
+            durability = 1,
             matte_finish = true,
         },
         description = "Creates strong adhesion and body, ideal for opaque passages that must resist wear.",
@@ -92,9 +83,6 @@ Binders.data = {
         description = "A low-cost alternative to gum arabic, suitable for simple gilding and utility mixes.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- ANIMAL GLUES
-    -- ══════════════════════════════════════════════════════════════
     
     COLLA_PESCE = {
         name = "Fish Glue / Isinglass",
@@ -129,32 +117,26 @@ Binders.data = {
         description = "Offers high grab and rigidity, but concentration must be controlled to avoid brittleness.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- GILDING GESSO
-    -- ══════════════════════════════════════════════════════════════
     
     GESSO_DORATURA = {
         name = "Gilding Gesso / Raised Ground",
         name_en = "Gilding Gesso / Raised Ground",
         tier = 3,
         cost = 30,
-        origin = "compound",  -- Plaster of Paris + adhesives
+        origin = "compound",
         function_desc = "Composite raised ground for embossed, burnishable gold leaf.",
         preparation = "Cook and grind plaster, glue, and additives into a smooth paste for thin layered application.",
         uses = {"gold_leaf_raised"},
         components = {"plaster_of_paris", "glair", "gum_arabic", "fish_glue", 
                       "rabbit_glue", "sugar", "garlic_juice", "pigment"},
-        risks = "reactivation",  -- Requires reactivation with breath moisture
+        risks = "reactivation",
         effects = {
-            raised_gold = true,  -- Raised gold
+            raised_gold = true,
             reflection_boost = true,
         },
         description = "Forms the classic domed gilding relief that catches light and boosts metallic brilliance.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- ADDITIVES AND AUXILIARIES
-    -- ══════════════════════════════════════════════════════════════
     
     ZUCCHERO = {
         name = "Sugar",
@@ -181,7 +163,7 @@ Binders.data = {
         function_desc = "Traditional tack enhancer for gilding and difficult surfaces.",
         preparation = "Crush fresh garlic, press the juice, and add only tiny filtered drops to the mix.",
         uses = {"gesso"},
-        risks = "odor",  -- Strong odor
+        risks = "odor",
         effects = {
             adhesion_boost = true,
         },
@@ -192,7 +174,7 @@ Binders.data = {
         name = "Earwax",
         name_en = "Earwax",
         tier = 1,
-        cost = 0,  -- Free!
+        cost = 0,
         origin = "organic",
         function_desc = "Antifoam additive used to calm glair and reduce bubbling.",
         preparation = "Soften and disperse a minute amount into the binder while still warm.",
@@ -221,20 +203,17 @@ Binders.data = {
         description = "Reduces froth and slows spoilage in small batches without strongly shifting hue.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- EXTRACTION AUXILIARIES (not final binders)
-    -- ══════════════════════════════════════════════════════════════
     
     LISCIVIA = {
         name = "Lye",
         name_en = "Lye",
         tier = 3,
         cost = 12,
-        origin = "chemical",  -- Ash + water
+        origin = "chemical",
         function_desc = "Alkaline processing agent for extraction and special pigment preparation.",
         preparation = "Leach wood ash with water, let solids settle, and decant the clear alkaline liquor.",
         uses = {"pigment_extraction", "lapis_preparation"},
-        risks = "skin_irritation",  -- Can cause skin cracking
+        risks = "skin_irritation",
         effects = {
             reactive = true,
             risk = 1,
@@ -256,9 +235,6 @@ Binders.data = {
         description = "Used as a process aid rather than a primary binder, especially in lapis workflows.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- WRITING AUXILIARIES
-    -- ══════════════════════════════════════════════════════════════
     
     SANDARACA = {
         name = "Gum Sandarac",
@@ -294,20 +270,17 @@ Binders.data = {
         description = "Common in historical recipes for verdigris, lead-white production, and bath stabilization.",
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- INKS (as complete formulas)
-    -- ══════════════════════════════════════════════════════════════
     
     VITRIOLO = {
         name = "Vitriol / Copperas",
         name_en = "Vitriol / Copperas",
         tier = 2,
         cost = 10,
-        origin = "mineral",  -- Solfato ferroso
+        origin = "mineral",
         function_desc = "Iron sulfate source for iron-gall ink chemistry.",
         preparation = "Dissolve measured vitriol crystals and combine with filtered gall extract.",
         uses = {"iron_gall_ink"},
-        risks = "corrosion",  -- High iron can corrode parchment
+        risks = "corrosion",
         effects = {
             permanence = true,
         },
@@ -319,7 +292,7 @@ Binders.data = {
         name_en = "Oak Gall / Gallnut",
         tier = 1,
         cost = 5,
-        origin = "organic",  -- Oak galls
+        origin = "organic",
         function_desc = "Tannin-rich base material for iron-gall ink.",
         preparation = "Crush oak galls, soak to extract tannins, then filter before combining with vitriol.",
         uses = {"iron_gall_ink"},
@@ -329,34 +302,28 @@ Binders.data = {
     },
 }
 
--- ══════════════════════════════════════════════════════════════════
--- FUNCTIONS
--- ══════════════════════════════════════════════════════════════════
 
---- Gets binder by name
-function Binders.get(name)
-    return Binders.data[name]
+function BinderCatalog.get(binder_id)
+    return BinderCatalog.data[binder_id]
 end
 
---- Gets binders by tier
-function Binders.getByTier(tier)
+function BinderCatalog.getByTier(tier)
     local result = {}
-    for name, data in pairs(Binders.data) do
-        if data.tier == tier then
-            result[name] = data
+    for binder_id, binder in pairs(BinderCatalog.data) do
+        if binder.tier == tier then
+            result[binder_id] = binder
         end
     end
     return result
 end
 
---- Gets binders by specific use
-function Binders.getByUse(use)
+function BinderCatalog.getByUse(usage_tag)
     local result = {}
-    for name, data in pairs(Binders.data) do
-        if data.uses then
-            for _, u in ipairs(data.uses) do
-                if u == use then
-                    result[name] = data
+    for binder_id, binder in pairs(BinderCatalog.data) do
+        if binder.uses then
+            for _, usage in ipairs(binder.uses) do
+                if usage == usage_tag then
+                    result[binder_id] = binder
                     break
                 end
             end
@@ -365,23 +332,21 @@ function Binders.getByUse(use)
     return result
 end
 
---- Counts total binders
-function Binders.count()
-    local n = 0
-    for _ in pairs(Binders.data) do
-        n = n + 1
+function BinderCatalog.count()
+    local total = 0
+    for _ in pairs(BinderCatalog.data) do
+        total = total + 1
     end
-    return n
+    return total
 end
 
---- Gets binders for gilding
-function Binders.getForGilding()
+function BinderCatalog.getForGilding()
     local result = {}
-    for name, data in pairs(Binders.data) do
-        if data.uses then
-            for _, u in ipairs(data.uses) do
-                if u == "gold_leaf" or u == "gesso" or u == "shell_gold" or u == "gold_leaf_raised" then
-                    result[name] = data
+    for binder_id, binder in pairs(BinderCatalog.data) do
+        if binder.uses then
+            for _, usage in ipairs(binder.uses) do
+                if usage == "gold_leaf" or usage == "gesso" or usage == "shell_gold" or usage == "gold_leaf_raised" then
+                    result[binder_id] = binder
                     break
                 end
             end
@@ -390,4 +355,4 @@ function Binders.getForGilding()
     return result
 end
 
-return Binders
+return BinderCatalog

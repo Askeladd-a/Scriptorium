@@ -1,8 +1,4 @@
--- main.lua
--- Entry point per il gioco Scriptorium Alchimico
--- Integra il sistema dadi 3D esistente con la logica di gioco
 
--- Carica moduli esistenti
 require("core")
 require("src.engine3d.render")
 require("src.engine3d.physics")
@@ -10,8 +6,7 @@ require("src.engine3d.geometry")
 require("src.engine3d.view")
 require("src.engine3d.light")
 
--- Carica moduli gioco (consolidati)
-local Scriptorium = require("src.modules.scriptorium")
+local Scriptorium = require("src.features.scriptorium.module")
 local Content = require("src.content")
 local DiceFaces = Content.DiceFaces
 local SettingsState = require("src.core.settings_state")
@@ -19,14 +14,12 @@ local AudioManager = require("src.core.audio_manager")
 local RuntimeUI = require("src.core.runtime_ui")
 local ResolutionManager = require("src.core.resolution_manager")
 
--- Module references (popolate in love.load)
 local main_menu_module = nil
 local run_module = nil
 local active_module = nil
 local scriptorium = nil
 local settings_module = nil
 
--- Forward declarations to keep helper APIs file-local (avoid implicit globals).
 local set_module
 local rollAllDice
 local checkDiceSettled
@@ -34,7 +27,6 @@ local onDiceSettled
 local readDiceValues
 local readDieFace
 
--- Configurazione board (dal main.lua originale)
 config = {
     boardlight = light.metal
 }
@@ -43,47 +35,39 @@ function config.boardimage(x, y)
     return "resources/textures/wood.png"
 end
 
--- Dadi 3D
 dice = {}
 local DICE_COUNT = 6
 local dice_size = 0.92
 
--- Stato dadi
 local diceSettled = false
 local diceSettledTimer = 0
-local SETTLE_DELAY = 0.3  -- Secondi di stabilità prima di leggere
+local SETTLE_DELAY = 0.3
 
--- UI
 local fps_font = nil
 local fps_font_size = 0
 local last_frame_present = nil
 
--- Prototype tray layout (screen-relative, no dependency on static background image).
 local DICE_TRAY_LAYOUT = {
     width_ratio = 0.70,
-    height_ratio = 0.32,
+    height_ratio = 0.29,
     max_width = 1240,
-    max_height = 440,
+    max_height = 400,
     min_width = 760,
-    min_height = 260,
-    bottom_margin = -16,
+    min_height = 230,
+    bottom_margin = 8,
     floor_top_ratio = 0.20,
     floor_bottom_ratio = 0.90,
     floor_top_width_ratio = 0.68,
     floor_bottom_width_ratio = 0.93,
 }
 
--- Visual calibration for the prototype tray overlay.
-local DICE_OVERLAY_SCALE_MULT = 1.22
-local DICE_OVERLAY_CENTER_Y = 0.60
+local DICE_OVERLAY_SCALE_MULT = 1.32
+local DICE_OVERLAY_CENTER_Y = 0.56
 local DICE_OVERLAY_SHADOWS = false
 
--- Physics box for dice motion inside the tray (world units).
 local DICE_BOX_HALF_X = 7.2
 local DICE_BOX_HALF_Y = 3.4
 
--- Trapezoid constraints in world space for the "invisible tray".
--- Narrower on the back side, wider on the front side to match perspective.
 local DICE_TRAPEZOID = {
     y_back = -3.05,
     y_front = 3.05,
@@ -97,6 +81,27 @@ local function clamp(v, min_v, max_v)
     if v < min_v then return min_v end
     if v > max_v then return max_v end
     return v
+end
+
+local last_mouse_x = nil
+local last_mouse_y = nil
+
+local function get_mouse_delta()
+    local delta_fn = (love and love.mouse) and rawget(love.mouse, "delta") or nil
+    if type(delta_fn) == "function" then
+        return delta_fn()
+    end
+    if not (love and love.mouse and love.mouse.getPosition) then
+        return 0, 0
+    end
+    local mx, my = love.mouse.getPosition()
+    if last_mouse_x == nil or last_mouse_y == nil then
+        last_mouse_x, last_mouse_y = mx, my
+        return 0, 0
+    end
+    local dx, dy = mx - last_mouse_x, my - last_mouse_y
+    last_mouse_x, last_mouse_y = mx, my
+    return dx, dy
 end
 
 local function get_tray_rect(window_w, window_h)
@@ -149,7 +154,7 @@ local function constrain_dice_to_trapezoid()
     local slide_damping = DICE_TRAPEZOID.slide_damping
 
     for i = 1, #dice do
-        local body = dice[i] and dice[i].star or nil
+        local body = dice[i] and dice[i].body or nil
         if body and body.position and body.velocity then
             local radius = math.max(0.15, (body.radius or 0.4) * 0.50)
 
@@ -243,24 +248,22 @@ local function draw_dice_tray_overlay()
     love.graphics.translate(cx, cy)
     love.graphics.scale(scale)
 
-    -- Keep tray geometry aligned with physics bounds even when board mesh is hidden.
     render.board_extents = {-box.x, box.x, -box.y, box.y}
 
-    -- Draw tray floor + 3D wooden frame for prototype mode.
     render.board(config.boardimage, config.boardlight, -box.x, box.x, -box.y, box.y)
 
     if DICE_OVERLAY_SHADOWS then
         for i = 1, #dice do
             render.shadow(function(_, action)
                 action()
-            end, dice[i].die, dice[i].star)
+            end, dice[i].die, dice[i].body)
         end
     end
 
     render.clear()
     render.tray_border(render.zbuffer, 0.85, box.border_height or 1.1, {105, 68, 40})
     for i = 1, #dice do
-        render.die(render.zbuffer, dice[i].die, dice[i].star)
+        render.die(render.zbuffer, dice[i].die, dice[i].body)
     end
     render.paint()
 
@@ -272,62 +275,52 @@ local function draw_dice_tray_overlay()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- ============================================================================
--- LÖVE CALLBACKS
--- ============================================================================
 
 ---@diagnostic disable: duplicate-set-field
 function love.load()
-    -- Setup fisica (dal main.lua originale)
     box:set(DICE_BOX_HALF_X, DICE_BOX_HALF_Y, 10, 25, 0.25, 0.75, 0.01)
     box.linear_damping = 0.12
     box.angular_damping = 0.12
     box.border_height = 0.9
     
-    -- Crea 6 dadi D6
     for i = 1, DICE_COUNT do
         local col = ((i - 1) % 3) - 1
         local row = math.floor((i - 1) / 3) - 0.5
         local sx = col * 1.0
         local sy = row * 1.0
         
-        -- Colori per faccia basati su DiceFaces (pigmenti fallback)
-        -- Usa d6.pipMap per convertire indice geometrico → valore pip
         local faceColors = {}
         for geoFace = 1, 6 do
-            local pip = d6.pipMap[geoFace]  -- faccia geometrica → valore pip
+            local pip = d6.pipMap[geoFace]
             local faceData = DiceFaces.DiceFaces[pip]
             local rgb = DiceFaces.getDieColor(faceData.fallback)
             faceColors[geoFace] = {rgb[1], rgb[2], rgb[3], 255}
         end
         
         dice[i] = {
-            star = newD6star(dice_size):set({sx, sy, 8}, {(i % 2 == 0) and 3 or -3, (i % 2 == 0) and -2 or 2, 0}, {1, 1, 2}),
+            body = newD6Body(dice_size):set({sx, sy, 8}, {(i % 2 == 0) and 3 or -3, (i % 2 == 0) and -2 or 2, 0}, {1, 1, 2}),
             die = clone(d6, {
                 material = light.plastic,
-                faceColors = faceColors,       -- Colori per faccia
-                color = {200, 180, 160, 255},  -- Fallback neutro
+                faceColors = faceColors,
+                color = {200, 180, 160, 255},
                 text = {255, 255, 255},
                 shadow = {20, 0, 0, 150}
             }),
-            kept = false,  -- Se il dado è stato tenuto (Farkle)
-            value = nil,   -- Valore corrente dopo roll
+            kept = false,
+            value = nil,
         }
         
-        -- Applica preset BONE per fisica realistica
-        materials.apply(dice[i].star, materials.get("bone"))
+        materials.apply(dice[i].body, materials.get("bone"))
         
-        box[i] = dice[i].star
+        box[i] = dice[i].body
     end
     
-    -- Seed RNG
     local seed = os.time()
     math.randomseed(seed)
     if love.math then
         love.math.setRandomSeed(seed)
     end
 
-    -- Carica e applica impostazioni utente persistenti
     SettingsState.load()
     SettingsState.apply()
     ResolutionManager.init(1920, 1080)
@@ -352,21 +345,18 @@ function love.load()
         last_frame_present = love.timer.getTime()
     end
 
-    -- Prototype camera: keeps top face + two lateral faces readable.
     view.yaw = 0.78
     view.pitch = 0.96
     view.distance = 13
     view.cos_pitch, view.sin_pitch = math.cos(view.pitch), math.sin(view.pitch)
     view.cos_yaw, view.sin_yaw = math.cos(view.yaw), math.sin(view.yaw)
     
-    -- ...existing code...
-    -- Carica moduli UI/gioco
-    main_menu_module = require("src.modules.main_menu")
-    run_module = require("src.game.run").module
+    main_menu_module = require("src.features.main_menu.module")
+    run_module = require("src.domain.run.model").module
     scriptorium = Scriptorium
-    settings_module = require("src.modules.settings")
-    local reward_module = require("src.modules.reward")
-    local startup_splash_module = require("src.modules.startup_splash")
+    settings_module = require("src.features.settings.module")
+    local reward_module = require("src.features.reward.module")
+    local startup_splash_module = require("src.features.startup_splash.module")
     local modules = {
         startup_splash = startup_splash_module,
         main_menu = main_menu_module,
@@ -375,17 +365,13 @@ function love.load()
         run = run_module,
         reward = reward_module,
     }
-    -- Funzione per cambiare modulo attivo
     function set_module(name, params)
         local next_module = modules[name]
         if next_module and next_module.enter then next_module:enter(params) end
         active_module = next_module
     end
-    -- Rendi globale per accesso dai moduli
     _G.set_module = set_module
-    -- Imposta il modulo iniziale
     set_module("startup_splash")
-    -- Setup callback roll
     Scriptorium.onRollRequest = function(max_dice)
         rollAllDice(max_dice)
     end
@@ -397,17 +383,13 @@ end
 
 function love.update(dt)
     ResolutionManager.refresh()
-    -- Update physics
     box:update(dt)
     constrain_dice_to_trapezoid()
-    -- Check se i dadi si sono fermati
     checkDiceSettled(dt)
-    -- Update modulo attivo
     if active_module and active_module.update then
         active_module:update(dt)
     end
-    -- Camera/view (dal main.lua originale)
-    local dx, dy = love.mouse.delta()
+    local dx, dy = get_mouse_delta()
     if love.mouse.isDown(2) then
         view.raise(dy / 100)
         view.turn(dx / 100)
@@ -460,7 +442,6 @@ function love.draw()
 end
 
 function love.keypressed(_key, _scancode, _isrepeat)
-    -- Mouse-only project: keyboard input intentionally ignored.
 end
 
 function love.mousepressed(x, y, button)
@@ -477,16 +458,10 @@ end
 ---@diagnostic enable: duplicate-set-field
 
 
--- ============================================================================
--- DICE FUNCTIONS
--- ============================================================================
 
---- Lancia i dadi non-kept.
---- `max_dice` consente di rilanciare solo N dadi (es. PUSH=3).
 function rollAllDice(max_dice)
     local rnd = (love and love.math and love.math.random) or math.random
     
-    -- Conta dadi da lanciare
     local to_roll = {}
     for i = 1, #dice do
         if not dice[i].kept then
@@ -513,12 +488,10 @@ function rollAllDice(max_dice)
     diceSettled = false
     diceSettledTimer = 0
     
-    -- Notifica modulo
     if Scriptorium then
         Scriptorium.state = "rolling"
     end
     
-    -- Spawn point
     local half_x = box.x * 0.84
     local half_y = box.y * 0.84
     local side = math.floor(rnd() * 4) + 1
@@ -544,7 +517,6 @@ function rollAllDice(max_dice)
     
     local rz = box.z * 0.5 + 1.0 + rnd() * 1.5
     
-    -- Direzione verso centro
     local to_center = vector{-sx, -sy, 0}
     local len = math.sqrt(to_center[1]^2 + to_center[2]^2)
     if len < 1e-4 then
@@ -564,18 +536,17 @@ function rollAllDice(max_dice)
         vertical_speed
     }
     
-    -- Lancia SOLO i dadi non-kept
     for _, i in ipairs(to_roll) do
         local jitter = 0.05 * (i - (#dice + 1) / 2)
-        dice[i].star.position = vector{sx + jitter, sy - jitter, rz}
-        dice[i].star.asleep = false
-        dice[i].star.sleep_timer = 0
-        dice[i].star.wall_hits = 0
-        dice[i].star.angular = vector{(rnd() - 0.5) * 12, (rnd() - 0.5) * 12, (rnd() - 0.5) * 12}
-        dice[i].value = nil  -- Reset valore
+        dice[i].body.position = vector{sx + jitter, sy - jitter, rz}
+        dice[i].body.asleep = false
+        dice[i].body.sleep_timer = 0
+        dice[i].body.wall_hits = 0
+        dice[i].body.angular = vector{(rnd() - 0.5) * 12, (rnd() - 0.5) * 12, (rnd() - 0.5) * 12}
+        dice[i].value = nil
         
         local noise = 1.2
-        dice[i].star.velocity = vector{
+        dice[i].body.velocity = vector{
             base_velocity[1] + (rnd() - 0.5) * noise,
             base_velocity[2] + (rnd() - 0.5) * noise,
             base_velocity[3] + (rnd() - 0.5) * noise * 0.5
@@ -586,13 +557,12 @@ function rollAllDice(max_dice)
     log("[Dice] Rolled " .. #to_roll .. " dice")
 end
 
---- Controlla se i dadi si sono fermati
 function checkDiceSettled(dt)
     if diceSettled then return end
     
     local all_stable = true
     for i = 1, #dice do
-        local s = dice[i].star
+        local s = dice[i].body
         if not s.asleep then
             all_stable = false
             break
@@ -610,60 +580,47 @@ function checkDiceSettled(dt)
     end
 end
 
---- Callback quando i dadi si fermano
 function onDiceSettled()
     local values = readDiceValues()
     log("[Dice] Settled: " .. table.concat(values, ", "))
     AudioManager.play_ui("move")
     
-    -- Notifica modulo
     if Scriptorium.onDiceSettled then
         Scriptorium:onDiceSettled(values)
     end
 end
 
---- Legge i valori delle facce superiori dei dadi
 function readDiceValues()
     local values = {}
     
     for i = 1, #dice do
-        local value = readDieFace(dice[i].star)
+        local value = readDieFace(dice[i].body)
         table.insert(values, value)
     end
     
     return values
 end
 
--- Mapping faccia geometrica -> valore pip per dado standard (right-handed)
--- Le facce opposte sommano a 7: 1↔6, 2↔5, 3↔4
--- Face geometry: 1=z+, 2=z-, 3=x+, 4=y-, 5=x-, 6=y+
--- Standard die: top=1, bottom=6, front=2, back=5, right=3, left=4
 local FACE_TO_PIP = {
-    [1] = 1,  -- z+ (top) = 1 pip
-    [2] = 6,  -- z- (bottom) = 6 pip (opposite of 1)
-    [3] = 3,  -- x+ (right) = 3 pip
-    [4] = 5,  -- y- (back) = 5 pip
-    [5] = 4,  -- x- (left) = 4 pip (opposite of 3)
-    [6] = 2,  -- y+ (front) = 2 pip (opposite of 5)
+    [1] = 1,
+    [2] = 6,
+    [3] = 3,
+    [4] = 5,
+    [5] = 4,
+    [6] = 2,
 }
 
---- Legge la faccia superiore di un dado
-function readDieFace(star)
-    -- Le facce del D6 (da geometry.lua)
-    -- faces={{1,2,3,4}, {5,6,7,8}, {1,2,6,5},{2,3,7,6},{3,4,8,7},{4,1,5,8}}
-    -- Le texture 1.png-6.png corrispondono agli indici delle facce
+function readDieFace(body)
     local faces = d6.faces
     
     local best_face = 1
     local best_z = -math.huge
     
-    -- Per ogni faccia, calcola il centro e trova quella con Z più alto
     for face_idx, face in ipairs(faces) do
         local center_z = 0
         
-        -- Calcola Z medio dei vertici della faccia (già ruotati)
         for _, vert_idx in ipairs(face) do
-            local vertex = star[vert_idx]
+            local vertex = body[vert_idx]
             center_z = center_z + vertex[3]
         end
         center_z = center_z / #face
@@ -674,6 +631,5 @@ function readDieFace(star)
         end
     end
     
-    -- Converti indice faccia geometrica a valore pip (dado standard)
     return FACE_TO_PIP[best_face] or best_face
 end

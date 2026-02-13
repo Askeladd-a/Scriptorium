@@ -1,5 +1,3 @@
--- src/ui/reward.lua
--- UI for reward (tool) selection.
 
 local RuntimeUI = require("src.core.runtime_ui")
 

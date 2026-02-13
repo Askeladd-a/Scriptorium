@@ -1,5 +1,3 @@
--- src/content/tile_pattern_generator.lua
--- Generates 4x5 tile patterns directly from resources/tiles.
 
 local Generator = {}
 
@@ -297,7 +295,7 @@ local function build_pattern_grid(rows, cols, rng, profile, options)
     return grid, tile_keys, markers, constraint_count
 end
 
-function Generator.list_tile_ids(force_refresh)
+function Generator.listTileIds(force_refresh)
     if not force_refresh and cached_tile_ids then
         return shallow_copy_array(cached_tile_ids)
     end
@@ -305,18 +303,17 @@ function Generator.list_tile_ids(force_refresh)
     return shallow_copy_array(cached_tile_ids)
 end
 
-function Generator.set_seed_mode(mode)
+function Generator.setSeedMode(mode)
     if mode == Generator.SEED_MODE_RANDOM or mode == Generator.SEED_MODE_SEEDED then
         Generator.seed_mode = mode
     end
 end
 
---- Generate a single 4x5 tile pattern.
 ---@param element string
 ---@param seed number|nil
 ---@param options table|nil
 ---@return table
-function Generator.generate_pattern(element, seed, options)
+function Generator.generatePattern(element, seed, options)
     options = options or {}
     local mode = options.seed_mode or Generator.seed_mode
     local resolved_seed, seeded = resolve_seed(seed, mode)
@@ -324,7 +321,7 @@ function Generator.generate_pattern(element, seed, options)
 
     local rows = math.max(1, math.floor(options.rows or DEFAULT_ROWS))
     local cols = math.max(1, math.floor(options.cols or DEFAULT_COLS))
-    local tile_ids = Generator.list_tile_ids(false)
+    local tile_ids = Generator.listTileIds(false)
     local profile = build_tile_profile(tile_ids)
 
     local grid, tile_keys, tile_markers, constraint_count = build_pattern_grid(rows, cols, rng, profile, options)
@@ -358,12 +355,11 @@ function Generator.generate_pattern(element, seed, options)
     }
 end
 
---- Generate a full set for gameplay elements.
 ---@param seed number|nil
 ---@param elements string[]|nil
 ---@param options table|nil
 ---@return table
-function Generator.generate_set(seed, elements, options)
+function Generator.generateSet(seed, elements, options)
     options = options or {}
     local mode = options.seed_mode or Generator.seed_mode
     local base_seed = resolve_seed(seed, mode)
@@ -372,7 +368,7 @@ function Generator.generate_set(seed, elements, options)
     local out = {}
     for i, element in ipairs(target_elements) do
         local per_element = (type(options.element_options) == "table" and options.element_options[element]) or {}
-        out[element] = Generator.generate_pattern(element, base_seed + i * 997, {
+        out[element] = Generator.generatePattern(element, base_seed + i * 997, {
             rows = per_element.rows or options.rows or DEFAULT_ROWS,
             cols = per_element.cols or options.cols or DEFAULT_COLS,
             seed_mode = mode,

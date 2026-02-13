@@ -1,5 +1,3 @@
--- src/core/settings_state.lua
--- Gestione stato impostazioni: default, load/save, apply runtime.
 
 local SettingsState = {}
 
@@ -303,8 +301,8 @@ function SettingsState.apply()
         curr_flags = curr_flags or {}
 
         local desktop_w, desktop_h = get_desktop_dimensions(curr_flags, curr_w, curr_h)
-        local target_w = curr_w
-        local target_h = curr_h
+        local target_w
+        local target_h
         local flags = copy_table(curr_flags)
 
         if not curr_flags.fullscreen and not curr_flags.borderless then
@@ -374,7 +372,6 @@ function SettingsState.apply()
         end
     end
 
-    -- Runtime globals usati da moduli/UI
     _G.game_settings = deep_copy(current)
     _G.show_fps = current.video.show_fps
     _G.target_fps = current.video.fps_limit

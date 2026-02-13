@@ -1,5 +1,3 @@
--- src/core/runtime_ui.lua
--- Helper runtime per accessibilita UI.
 
 local RuntimeUI = {}
 

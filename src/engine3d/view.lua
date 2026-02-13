@@ -8,8 +8,14 @@ view={
 view.cos_pitch, view.sin_pitch=math.cos(view.pitch), math.sin(view.pitch)
 view.cos_yaw, view.sin_yaw=math.cos(view.yaw), math.sin(view.yaw)
 
+local function clamp(value, min_v, max_v)
+  if value < min_v then return min_v end
+  if value > max_v then return max_v end
+  return value
+end
+
 function view.raise(delta)
-  view.pitch=math.bound(view.pitch-delta,0.1,1.5)
+  view.pitch=clamp(view.pitch-delta,0.1,1.5)
   view.cos_pitch,view.sin_pitch=math.cos(view.pitch), math.sin(view.pitch)
 end
 function view.turn(delta)
@@ -17,7 +23,7 @@ function view.turn(delta)
   view.cos_yaw,view.sin_yaw=math.cos(view.yaw), math.sin(view.yaw)
 end
 function view.move(delta)
-  view.distance=math.bound(view.distance*delta,20,100)
+  view.distance=clamp(view.distance*delta,20,100)
 end
 
 function view.project(x,y,z)

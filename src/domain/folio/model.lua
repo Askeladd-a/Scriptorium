@@ -1,18 +1,13 @@
--- src/game/folio.lua
--- Sistema Folio: la singola pagina del manoscritto
--- Ogni elemento ha un pattern (griglia con vincoli) e celle dove piazzare dadi
 
 local Patterns = require("src.content.patterns")
 local MVPDecks = require("src.content.mvp_decks")
+local FolioTurn = require("src.domain.folio.turn")
 
 local Folio = {}
 Folio.__index = Folio
 
--- Elementi della checklist (ordine di unlock).
--- CORNERS is merged into DROPCAPS for the 4-grid gameplay layout.
 Folio.ELEMENTS = {"TEXT", "DROPCAPS", "BORDERS", "MINIATURE"}
 
--- Bonus completamento elemento
 Folio.BONUS = {
     TEXT = {coins = 5},
     DROPCAPS = {coins = 3, shield = 1},
@@ -50,55 +45,49 @@ local function get_border_parity(seed)
     return "ODD"
 end
 
---- Crea un nuovo Folio
----@param fascicolo_type string Tipo fascicolo (BIFOLIO, DUERNO, etc.)
----@param seed? number Seed per selezione pattern riproducibile
----@param run_setup? table Setup carte/effetti della run
+---@param folio_set_type string Folio set type (BIFOLIO, DUERNO, etc.)
+---@param seed? number Seed for reproducible pattern selection
+---@param run_setup? table Run card/effect setup
 ---@return table Folio instance
-function Folio.new(fascicolo_type, seed, run_setup)
+function Folio.new(folio_set_type, seed, run_setup)
     local self = setmetatable({}, Folio)
     
-    self.fascicolo = fascicolo_type or "BIFOLIO"
+    self.folio_set = folio_set_type or "BIFOLIO"
     self.seed = seed or os.time()
 
-    run_setup = run_setup or MVPDecks.draw_run_setup(self.seed + 77)
+    run_setup = run_setup or MVPDecks.drawRunSetup(self.seed + 77)
     self.run_setup = run_setup
     self.rule_cards = run_setup.cards or {}
     self.rule_effects = run_setup.effects or {}
     self.border_parity = self.rule_effects.force_borders_parity or get_border_parity(self.seed)
     
-    -- Seleziona pattern per ogni elemento
-    local patternSet = Patterns.getRandomPatternSet(self.seed)
+    local pattern_set = Patterns.getRandomPatternSet(self.seed)
     
-    -- Stato degli elementi
     self.elements = {}
     for _, elem in ipairs(Folio.ELEMENTS) do
-        local pattern = patternSet[elem]
-        local totalCells = pattern.rows * pattern.cols
+        local pattern = pattern_set[elem]
+        local total_cells = pattern.rows * pattern.cols
         
         self.elements[elem] = {
-            pattern = pattern,                    -- Pattern con vincoli
-            placed = {},                          -- Celle piazzate: {[index] = {value, color, pigment}}
-            wet = {},                             -- Celle piazzate nel turno corrente (non confermate)
+            pattern = pattern,
+            placed = {},
+            wet = {},
             cells_filled = 0,
-            cells_total = totalCells,
-            unlocked = (elem == "TEXT"),          -- Solo TEXT sbloccato all'inizio
+            cells_total = total_cells,
+            unlocked = (elem == "TEXT"),
             completed = false,
-            motif_pairs = (elem == "BORDERS") and {} or nil, -- Coppie colore scelte per motivo
+            motif_pairs = (elem == "BORDERS") and {} or nil,
         }
         
-        -- Inizializza griglia placed vuota
-        for i = 1, totalCells do
+        for i = 1, total_cells do
             self.elements[elem].placed[i] = nil
         end
     end
     
-    -- Sistema macchie
     self.stain_count = 0
     self.stain_threshold = self:getStainThreshold()
-    self.shield = 0  -- From DROPCAPS completion bonus
+    self.shield = 0
 
-    -- Stato turno (wet buffer + rischio)
     self.wet_buffer = {}
     self.turn_risk = 0
     self.turn_pushes = 0
@@ -106,26 +95,23 @@ function Folio.new(fascicolo_type, seed, run_setup)
         over_four = false,
         preparation_used = false,
     }
-    self.push_risk_enabled = false -- opzionale: +1 rischio per ogni PUSH oltre il primo
+    self.push_risk_enabled = false
     self.preparation_guard = (self.rule_effects.tool_bonus_guard or 0)
     self.first_stop_done = false
     self.tool_uses_left = (self.rule_cards.tool and self.rule_cards.tool.uses_per_folio) or 0
 
-    -- Punteggio qualità complessivo del folio
     self.quality = 0
     self.section_stains = {}
     for _, elem in ipairs(Folio.ELEMENTS) do
         self.section_stains[elem] = 0
     end
     
-    -- Stato generale
     self.busted = false
     self.completed = false
     
     return self
 end
 
---- Threshold macchie per tipo fascicolo
 function Folio:getStainThreshold()
     local thresholds = {
         BIFOLIO = 5,
@@ -135,7 +121,7 @@ function Folio:getStainThreshold()
         QUINTERNO = 7,
         SESTERNO = 8,
     }
-    return thresholds[self.fascicolo] or 7
+    return thresholds[self.folio_set] or 7
 end
 
 function Folio:_getEffectivePlacement(elem, index)
@@ -176,7 +162,6 @@ end
 
 function Folio:_getBorderMotifPos(pattern, row, col)
     if pattern.rows == 3 and pattern.cols == 4 then
-        -- 4 motivi da 3 celle (colonne): 1-2-3 dall'alto verso il basso
         return col, row
     end
 
@@ -236,25 +221,25 @@ local function border_alternation_valid(pair, colors)
     return valid_aba or valid_bab
 end
 
-function Folio:_validateSectionRules(element, row, col, diceValue, diceColor)
+function Folio:_validateSectionRules(element, row, col, dice_value, dice_color)
     local elem = self.elements[element]
     local meta = {
         border_break = false,
         border_motif = nil,
         border_pair = nil,
-        is_gold = (diceColor == "GIALLO" or diceValue == 6),
+        is_gold = (dice_color == "GIALLO" or dice_value == 6),
     }
 
     if self.rule_effects and self.rule_effects.simple_sections then
         if element == "TEXT" then
-            if diceValue < 1 or diceValue > 3 then
+            if dice_value < 1 or dice_value > 3 then
                 return false, "Text accepts only 1-3", meta
             end
             return true, nil, meta
         end
 
         if element == "DROPCAPS" then
-            if diceValue < 4 or diceValue > 6 then
+            if dice_value < 4 or dice_value > 6 then
                 return false, "Dropcaps accepts only 4-6", meta
             end
             return true, nil, meta
@@ -262,7 +247,7 @@ function Folio:_validateSectionRules(element, row, col, diceValue, diceColor)
 
         if element == "BORDERS" then
             local parity_even = (self.border_parity == "EVEN")
-            local is_even = (diceValue % 2) == 0
+            local is_even = (dice_value % 2) == 0
             if parity_even and not is_even then
                 return false, "Borders accepts only even values in this folio", meta
             end
@@ -272,12 +257,11 @@ function Folio:_validateSectionRules(element, row, col, diceValue, diceColor)
             return true, nil, meta
         end
 
-        -- MINIATURE accepts all values/colors in MVP mode.
         return true, nil, meta
     end
 
     if element == "TEXT" then
-        if not TEXT_ALLOWED_COLORS[diceColor] then
+        if not TEXT_ALLOWED_COLORS[dice_color] then
             return false, "Text allows only Nero, Marrone, Rosso", meta
         end
         local current_row = self:_getTextCurrentRow(elem)
@@ -293,11 +277,11 @@ function Folio:_validateSectionRules(element, row, col, diceValue, diceColor)
 
         local pair = elem.motif_pairs[motif]
         if not pair then
-            pair = self:_getBorderPairForColor(diceColor)
+            pair = self:_getBorderPairForColor(dice_color)
             meta.border_pair = {pair[1], pair[2]}
         end
 
-        local colors = self:_getBorderMotifColors(elem, motif, pos, diceColor)
+        local colors = self:_getBorderMotifColors(elem, motif, pos, dice_color)
         if not border_alternation_valid(pair, colors) then
             meta.border_break = true
         end
@@ -320,17 +304,16 @@ function Folio:_validateSectionRules(element, row, col, diceValue, diceColor)
         return true, nil, meta
     end
 
-    -- DROPCAPS: tutti i colori legali.
     return true, nil, meta
 end
 
-function Folio:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
+function Folio:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
     local elem = self.elements[element]
     if not elem then
         return false, "Invalid element", nil
     end
 
-    local color = diceColor or VALUE_TO_COLOR[diceValue]
+    local color = dice_color or VALUE_TO_COLOR[dice_value]
     if not color then
         return false, "Invalid die color", nil
     end
@@ -359,13 +342,13 @@ function Folio:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
     end
 
     if not (self.rule_effects and self.rule_effects.ignore_pattern_constraints) then
-        local can_place_pattern, pattern_reason = Patterns.canPlace(pattern, row, col, diceValue, color)
+        local can_place_pattern, pattern_reason = Patterns.canPlace(pattern, row, col, dice_value, color)
         if not can_place_pattern then
             return false, pattern_reason, nil
         end
     end
 
-    local can_place_section, section_reason, meta = self:_validateSectionRules(element, row, col, diceValue, color)
+    local can_place_section, section_reason, meta = self:_validateSectionRules(element, row, col, dice_value, color)
     if not can_place_section then
         return false, section_reason, meta
     end
@@ -376,35 +359,33 @@ function Folio:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
     return true, nil, meta
 end
 
---- Verifica se un dado può essere piazzato (senza piazzarlo)
 ---@param element string
 ---@param row number
 ---@param col number
----@param diceValue number
----@param diceColor string
+---@param dice_value number
+---@param dice_color string
 ---@return boolean canPlace
 ---@return string|nil reason
-function Folio:canPlaceDie(element, row, col, diceValue, diceColor)
-    local ok, reason = self:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
+function Folio:canPlaceDie(element, row, col, dice_value, dice_color)
+    local ok, reason = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
     return ok, reason
 end
 
---- Piazza un dado direttamente in permanente (legacy path).
 ---@param element string
 ---@param row number
 ---@param col number
----@param diceValue number
----@param diceColor string
----@param pigmentName? string
+---@param dice_value number
+---@param dice_color string
+---@param pigment_name? string
 ---@return boolean success
 ---@return string message
-function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
-    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
+function Folio:placeDie(element, row, col, dice_value, dice_color, pigment_name)
+    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
     if not ok or not meta then
         return false, reason or "Cannot place die"
     end
 
-    local color = meta.color or diceColor or VALUE_TO_COLOR[diceValue]
+    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
 
     local elem = self.elements[element]
     if element == "BORDERS" and meta and meta.border_motif and meta.border_pair and not elem.motif_pairs[meta.border_motif] then
@@ -412,9 +393,9 @@ function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
     end
 
     elem.placed[meta.index] = {
-        value = diceValue,
+        value = dice_value,
         color = color,
-        pigment = pigmentName,
+        pigment = pigment_name,
         wet = false,
     }
     elem.cells_filled = elem.cells_filled + 1
@@ -424,20 +405,19 @@ function Folio:placeDie(element, row, col, diceValue, diceColor, pigmentName)
     end
 
     self.quality = self:calculateQuality()
-    return true, string.format("%s: placed %s (%d) at [%d,%d]", element, color, diceValue, row, col)
+    return true, string.format("%s: placed %s (%d) at [%d,%d]", element, color, dice_value, row, col)
 end
 
---- Aggiunge un piazzamento al wet buffer del turno corrente.
 ---@return boolean success
 ---@return string message
 ---@return table|nil placement
-function Folio:addWetDie(element, row, col, diceValue, diceColor, pigmentName)
-    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, diceValue, diceColor)
+function Folio:addWetDie(element, row, col, dice_value, dice_color, pigment_name)
+    local ok, reason, meta = self:_canPlaceWithMeta(element, row, col, dice_value, dice_color)
     if not ok or not meta then
         return false, reason or "Cannot queue die", nil
     end
 
-    local color = meta.color or diceColor or VALUE_TO_COLOR[diceValue]
+    local color = meta.color or dice_color or VALUE_TO_COLOR[dice_value]
 
     local elem = self.elements[element]
     if element == "BORDERS" and meta and meta.border_motif and meta.border_pair and not elem.motif_pairs[meta.border_motif] then
@@ -449,9 +429,9 @@ function Folio:addWetDie(element, row, col, diceValue, diceColor, pigmentName)
         row = row,
         col = col,
         index = meta.index,
-        value = diceValue,
+        value = dice_value,
         color = color,
-        pigment = pigmentName,
+        pigment = pigment_name,
         wet = true,
         border_break = (meta and meta.border_break) and true or false,
         is_gold = (meta and meta.is_gold) and true or false,
@@ -488,79 +468,6 @@ function Folio:addWetDie(element, row, col, diceValue, diceColor, pigmentName)
     return true, "Queued in wet buffer", placement
 end
 
-function Folio:registerPush(mode)
-    self.turn_pushes = self.turn_pushes + 1
-    local push_risk_always = self.rule_effects and self.rule_effects.push_risk_always or nil
-    if push_risk_always and push_risk_always > 0 then
-        self.turn_risk = self.turn_risk + push_risk_always
-    end
-    if self.push_risk_enabled and self.turn_pushes > 1 then
-        self.turn_risk = self.turn_risk + 1
-    end
-    self.last_push_mode = mode or "all"
-end
-
-function Folio:getWetCount()
-    return #self.wet_buffer
-end
-
-function Folio:getTurnRisk()
-    return self.turn_risk
-end
-
-function Folio:getPreparationGuard()
-    return self.preparation_guard or 0
-end
-
-function Folio:canUsePreparation()
-    return not self.turn_flags.preparation_used
-end
-
-function Folio:applyPreparation(mode)
-    if self.turn_flags.preparation_used then
-        return false, "Preparation already used this turn"
-    end
-    local m = mode or "risk"
-    if m == "risk" then
-        self.turn_risk = math.max(0, self.turn_risk - 1)
-    else
-        self.preparation_guard = (self.preparation_guard or 0) + 1
-    end
-    self.turn_flags.preparation_used = true
-    return true, (m == "risk") and "Risk reduced by 1" or "Stored 1 stain guard"
-end
-
-function Folio:getRuleCards()
-    return self.rule_cards or {}
-end
-
-function Folio:getRuleEffects()
-    return self.rule_effects or {}
-end
-
-function Folio:getToolUsesLeft()
-    return self.tool_uses_left or 0
-end
-
-function Folio:canUseTool(id)
-    if not self.rule_cards or not self.rule_cards.tool then
-        return false
-    end
-    if id and self.rule_cards.tool.id ~= id then
-        return false
-    end
-    return (self.tool_uses_left or 0) > 0
-end
-
-function Folio:consumeToolUse(id)
-    if not self:canUseTool(id) then
-        return false
-    end
-    self.tool_uses_left = math.max(0, (self.tool_uses_left or 0) - 1)
-    return true
-end
-
---- Ottiene lo stato di una cella
 ---@param element string
 ---@param row number
 ---@param col number
@@ -584,9 +491,8 @@ function Folio:getCellState(element, row, col)
     }
 end
 
---- Ottiene tutte le celle di un elemento
 ---@param element string
----@return table[] Lista di stati cella
+---@return table[] Cell state list
 function Folio:getAllCells(element)
     local elem = self.elements[element]
     if not elem then return {} end
@@ -600,12 +506,11 @@ function Folio:getAllCells(element)
     return cells
 end
 
---- Trova celle valide per un dado in un elemento
 ---@param element string
----@param diceValue number
----@param diceColor string
----@return table[] Lista di {row, col} valide
-function Folio:getValidPlacements(element, diceValue, diceColor)
+---@param dice_value number
+---@param dice_color string
+---@return table[] Valid {row, col} positions
+function Folio:getValidPlacements(element, dice_value, dice_color)
     local elem = self.elements[element]
     if not elem or not elem.unlocked or elem.completed then
         return {}
@@ -614,8 +519,8 @@ function Folio:getValidPlacements(element, diceValue, diceColor)
     local valid = {}
     for row = 1, elem.pattern.rows do
         for col = 1, elem.pattern.cols do
-            local canPlace = self:canPlaceDie(element, row, col, diceValue, diceColor)
-            if canPlace then
+            local can_place = self:canPlaceDie(element, row, col, dice_value, dice_color)
+            if can_place then
                 table.insert(valid, {row = row, col = col})
             end
         end
@@ -623,14 +528,13 @@ function Folio:getValidPlacements(element, diceValue, diceColor)
     return valid
 end
 
---- Trova tutti gli elementi dove un dado può essere piazzato
----@param diceValue number
----@param diceColor string
+---@param dice_value number
+---@param dice_color string
 ---@return table {element = {{row,col}, ...}, ...}
-function Folio:getAllValidPlacements(diceValue, diceColor)
+function Folio:getAllValidPlacements(dice_value, dice_color)
     local result = {}
     for _, elem in ipairs(Folio.ELEMENTS) do
-        local placements = self:getValidPlacements(elem, diceValue, diceColor)
+        local placements = self:getValidPlacements(elem, dice_value, dice_color)
         if #placements > 0 then
             result[elem] = placements
         end
@@ -700,165 +604,9 @@ function Folio:hasAnyLegalPlacement(dice_values)
     return false
 end
 
-function Folio:getWetSummary()
-    local counts = {}
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        counts[elem] = 0
-    end
-    for _, entry in ipairs(self.wet_buffer) do
-        counts[entry.element] = (counts[entry.element] or 0) + 1
-    end
-    return {
-        count = #self.wet_buffer,
-        risk = self.turn_risk,
-        pushes = self.turn_pushes,
-        section_counts = counts,
-    }
-end
-
-function Folio:discardWetBuffer()
-    if #self.wet_buffer == 0 then
-        self.turn_risk = 0
-        self.turn_pushes = 0
-        self.turn_flags.over_four = false
-        self.turn_flags.preparation_used = false
-        return 0
-    end
-
-    local removed = 0
-    for _, entry in ipairs(self.wet_buffer) do
-        local elem = self.elements[entry.element]
-        if elem and elem.wet[entry.index] then
-            elem.wet[entry.index] = nil
-            removed = removed + 1
-        end
-    end
-
-    self.wet_buffer = {}
-    self.turn_risk = 0
-    self.turn_pushes = 0
-    self.turn_flags.over_four = false
-    self.turn_flags.preparation_used = false
-    self:_pruneBorderMotifPairs()
-    return removed
-end
-
-function Folio:commitWetBuffer()
-    if #self.wet_buffer == 0 then
-        return {
-            committed = 0,
-            stains_added = 0,
-            wettest_section = nil,
-            still_wet = 0,
-        }
-    end
-
-    local section_counts = {}
-    local touched = {}
-    local committed = 0
-    local committed_entries = {}
-
-    for _, entry in ipairs(self.wet_buffer) do
-        local elem = self.elements[entry.element]
-        if elem and elem.wet[entry.index] then
-            elem.wet[entry.index] = nil
-            entry.wet = false
-            elem.placed[entry.index] = entry
-            elem.cells_filled = elem.cells_filled + 1
-            touched[entry.element] = true
-            section_counts[entry.element] = (section_counts[entry.element] or 0) + 1
-            committed = committed + 1
-            committed_entries[#committed_entries + 1] = entry
-        end
-    end
-
-    self.wet_buffer = {}
-
-    local keep_wet = 0
-    local first_stop_wet_left = self.rule_effects and self.rule_effects.first_stop_wet_left or 0
-    if (not self.first_stop_done) and first_stop_wet_left and first_stop_wet_left > 0 then
-        keep_wet = math.min(first_stop_wet_left, #committed_entries)
-        self.first_stop_done = true
-        for _ = 1, keep_wet do
-            local entry = table.remove(committed_entries)
-            if entry then
-                local elem = self.elements[entry.element]
-                if elem and elem.placed[entry.index] then
-                    elem.placed[entry.index] = nil
-                    elem.wet[entry.index] = entry
-                    entry.wet = true
-                    elem.cells_filled = math.max(0, elem.cells_filled - 1)
-                    self.wet_buffer[#self.wet_buffer + 1] = entry
-                    section_counts[entry.element] = math.max(0, (section_counts[entry.element] or 0) - 1)
-                    committed = math.max(0, committed - 1)
-                end
-            end
-        end
-    end
-
-    local effective_risk = self.turn_risk
-    local stop_risk_reduction = self.rule_effects and self.rule_effects.stop_risk_reduction or 0
-    if stop_risk_reduction > 0 and effective_risk > 0 then
-        effective_risk = math.max(0, effective_risk - stop_risk_reduction)
-    end
-    local tool_stop_reduction = self.rule_effects and self.rule_effects.tool_stop_risk_reduction or 0
-    if tool_stop_reduction > 0 and effective_risk > 0 and (self.tool_uses_left or 0) > 0 then
-        local reduction = math.min(tool_stop_reduction, effective_risk)
-        effective_risk = effective_risk - reduction
-        self.tool_uses_left = math.max(0, (self.tool_uses_left or 0) - 1)
-    end
-
-    local stains_added = math.floor(effective_risk / 2)
-    self.turn_risk = 0
-    self.turn_pushes = 0
-    self.turn_flags.over_four = false
-    self.turn_flags.preparation_used = false
-
-    for element, _ in pairs(touched) do
-        local elem = self.elements[element]
-        if elem and (not elem.completed) and elem.cells_filled >= elem.cells_total then
-            elem.completed = true
-            self:onElementCompleted(element)
-        end
-    end
-
-    local wettest_section = nil
-    local wettest_count = -1
-    for _, elem in ipairs(Folio.ELEMENTS) do
-        local c = section_counts[elem] or 0
-        if c > wettest_count then
-            wettest_count = c
-            wettest_section = elem
-        end
-    end
-    if wettest_count <= 0 then
-        wettest_section = nil
-    end
-
-    self:_pruneBorderMotifPairs()
-
-    if stains_added > 0 then
-        self:addStain(stains_added)
-        if wettest_section then
-            self.section_stains[wettest_section] = (self.section_stains[wettest_section] or 0) + stains_added
-        end
-    end
-
-    self.quality = self:calculateQuality()
-
-    return {
-        committed = committed,
-        stains_added = stains_added,
-        wettest_section = wettest_section,
-        still_wet = keep_wet,
-    }
-end
-
---- Callback completamento elemento
 function Folio:onElementCompleted(element)
     log("[Folio] Completed: " .. element)
     
-    -- Sblocca elemento successivo
     local idx = nil
     for i, elem in ipairs(Folio.ELEMENTS) do
         if elem == element then idx = i break end
@@ -869,26 +617,22 @@ function Folio:onElementCompleted(element)
         log("[Folio] Unlocked: " .. next_elem)
     end
     
-    -- Applica bonus
     local bonus = Folio.BONUS[element]
     if bonus and bonus.shield then
         self.shield = self.shield + bonus.shield
     end
     
-    -- Check completamento folio (TEXT + MINIATURE obbligatori)
     if self.elements.TEXT.completed and self.elements.MINIATURE.completed then
         self.completed = true
         log("[Folio] FOLIO COMPLETED!")
     end
 end
 
---- Aggiungi macchia
----@param amount number Numero di macchie (default 1)
----@return boolean busted Se il folio è andato in bust
+---@param amount number Number of stains (default 1)
+---@return boolean busted True when stain threshold is reached
 function Folio:addStain(amount)
     amount = amount or 1
 
-    -- Preparation guard ignores future stains (anti-frustration valve).
     if amount > 0 and (self.preparation_guard or 0) > 0 then
         local blocked = math.min(amount, self.preparation_guard)
         self.preparation_guard = self.preparation_guard - blocked
@@ -901,7 +645,6 @@ function Folio:addStain(amount)
         return false
     end
     
-    -- Shield assorbe macchie
     if self.shield > 0 then
         local absorbed = math.min(self.shield, amount)
         self.shield = self.shield - absorbed
@@ -914,7 +657,6 @@ function Folio:addStain(amount)
     self.stain_count = self.stain_count + amount
     log(string.format("[Folio] Stains: %d/%d", self.stain_count, self.stain_threshold))
     
-    -- Check bust
     if self.stain_count >= self.stain_threshold then
         self.busted = true
         log("[Folio] BUST! Too many stains!")
@@ -924,7 +666,6 @@ function Folio:addStain(amount)
     return false
 end
 
---- Rimuovi macchia (es. da Tocco d'Oro)
 function Folio:removeStain(amount)
     amount = amount or 1
     self.stain_count = math.max(0, self.stain_count - amount)
@@ -934,11 +675,10 @@ end
 function Folio:calculateQuality()
     local quality = 0
 
-    -- TEXT: Nero +2, Marrone +1, Rosso = rubriche; bonus rubriche >=2 e zero macchie sezione
     do
         local elem = self.elements.TEXT
         if elem then
-            local rubriche = 0
+            local rubrics = 0
             for i = 1, elem.cells_total do
                 local placed = elem.placed[i]
                 if placed then
@@ -947,17 +687,16 @@ function Folio:calculateQuality()
                     elseif placed.color == "MARRONE" then
                         quality = quality + 1
                     elseif placed.color == "ROSSO" then
-                        rubriche = rubriche + 1
+                        rubrics = rubrics + 1
                     end
                 end
             end
-            if rubriche >= 2 and (self.section_stains.TEXT or 0) == 0 then
+            if rubrics >= 2 and (self.section_stains.TEXT or 0) == 0 then
                 quality = quality + 3
             end
         end
     end
 
-    -- BORDERS: Oro jolly vale +1 qualità.
     do
         local elem = self.elements.BORDERS
         if elem then
@@ -970,7 +709,6 @@ function Folio:calculateQuality()
         end
     end
 
-    -- MINIATURE: varietà colori +1 (max +4), adiacenze uguali -1, oro singolo +3 se completa.
     do
         local elem = self.elements.MINIATURE
         if elem then
@@ -1025,7 +763,6 @@ function Folio:calculateQuality()
         end
     end
 
-    -- DROPCAPS/CORNERS: Rosso/Blu +2, Oro +3, bonus coppia Rosso+Blu +2.
     do
         local elem = self.elements.DROPCAPS
         if elem then
@@ -1051,7 +788,6 @@ function Folio:calculateQuality()
         end
     end
 
-    -- Dynamic card modifiers (commission/parchment/tool).
     do
         local quality_per_color = self.rule_effects and self.rule_effects.quality_per_color or nil
         local quality_per_section = self.rule_effects and self.rule_effects.quality_per_section or nil
@@ -1078,11 +814,10 @@ function Folio:calculateQuality()
     return quality
 end
 
---- Stato debug
 function Folio:getStatus()
     local cards = self:getRuleCards()
     local status = {
-        fascicolo = self.fascicolo,
+        folio_set = self.folio_set,
         stains = string.format("%d/%d", self.stain_count, self.stain_threshold),
         shield = self.shield,
         quality = self.quality,
@@ -1112,10 +847,9 @@ function Folio:getStatus()
     return status
 end
 
---- Debug print
 function Folio:debugPrint()
     log("\n" .. string.rep("═", 60))
-    log("FOLIO: " .. self.fascicolo)
+    log("FOLIO: " .. tostring(self.folio_set))
     log(string.format("Stains: %d/%d | Shield: %d | Quality: %d | Wet: %d | Risk: %d | Busted: %s | Completed: %s",
         self.stain_count, self.stain_threshold, self.shield, self.quality,
         #self.wet_buffer, self.turn_risk, tostring(self.busted), tostring(self.completed)))
@@ -1128,7 +862,6 @@ function Folio:debugPrint()
         print(string.format("%s %s: %s [%d/%d] %s",
             lock, elemName, elem.pattern.name, elem.cells_filled, elem.cells_total, check))
         
-        -- Mostra griglia se sbloccato
         if elem.unlocked then
             for row = 1, elem.pattern.rows do
                 local line = "    "
@@ -1157,154 +890,20 @@ function Folio:debugPrint()
     log(string.rep("═", 60))
 end
 
+Folio.registerPush = FolioTurn.registerPush
+Folio.getWetCount = FolioTurn.getWetCount
+Folio.getTurnRisk = FolioTurn.getTurnRisk
+Folio.getPreparationGuard = FolioTurn.getPreparationGuard
+Folio.canUsePreparation = FolioTurn.canUsePreparation
+Folio.applyPreparation = FolioTurn.applyPreparation
+Folio.getRuleCards = FolioTurn.getRuleCards
+Folio.getRuleEffects = FolioTurn.getRuleEffects
+Folio.getToolUsesLeft = FolioTurn.getToolUsesLeft
+Folio.canUseTool = FolioTurn.canUseTool
+Folio.consumeToolUse = FolioTurn.consumeToolUse
+Folio.getWetSummary = FolioTurn.getWetSummary
+Folio.discardWetBuffer = FolioTurn.discardWetBuffer
+Folio.commitWetBuffer = FolioTurn.commitWetBuffer
 
---------------------------------------------------------------------------------
--- RUN: Gestisce una run completa (fascicolo di N folii)
--- Integrato in folio.lua per consolidamento
---------------------------------------------------------------------------------
-
-local Run = {}
-Run.__index = Run
-
--- Tipi di fascicolo e numero di folii
-Run.FASCICOLI = {
-    BIFOLIO = 2,
-    DUERNO = 4,
-    TERNIONE = 6,
-    QUATERNIONE = 8,
-    QUINTERNO = 10,
-    SESTERNO = 12,
-}
-
---- Crea una nuova run
----@param fascicolo_type string Tipo di fascicolo
----@param seed number Seed per RNG riproducibile (opzionale)
-function Run.new(fascicolo_type, seed)
-    local self = setmetatable({}, Run)
-    
-    self.fascicolo = fascicolo_type or "BIFOLIO"
-    self.total_folii = Run.FASCICOLI[self.fascicolo] or 2
-    
-    -- Seed riproducibile
-    self.seed = seed or os.time()
-    math.randomseed(self.seed)
-    if love and love.math then
-        love.math.setRandomSeed(self.seed)
-    end
-    log("[Run] Seed: " .. self.seed)
-    self.rule_setup = MVPDecks.draw_run_setup(self.seed + 101)
-    
-    -- Stato run
-    self.current_folio_index = 1
-    self.current_folio = Folio.new(self.fascicolo, self.seed + 1, self.rule_setup)
-    self.completed_folii = {}
-    
-    -- Risorse player
-    self.reputation = 20  -- HP della run
-    self.coins = 0
-    
-    -- Inventario (pigmenti, leganti scelti)
-    self.inventory = {
-        pigments = {},
-        binders = {},
-    }
-    
-    -- Stato
-    self.game_over = false
-    self.victory = false
-    
-    return self
-end
-
---- Avanza al folio successivo
-function Run:nextFolio()
-    if self.current_folio.completed then
-        -- Calcola reward
-        local reward = self:calculateFolioReward()
-        self.coins = self.coins + reward.coins
-        self.reputation = self.reputation + reward.reputation
-        
-        print(string.format("[Run] Folio %d completed! +%d coins, +%d rep", 
-            self.current_folio_index, reward.coins, reward.reputation))
-        
-        table.insert(self.completed_folii, self.current_folio)
-        self.current_folio_index = self.current_folio_index + 1
-        
-        -- Check vittoria
-        if self.current_folio_index > self.total_folii then
-            self.victory = true
-            log("[Run] VICTORY! Folio set completed!")
-            return true, "victory"
-        end
-        
-        -- Nuovo folio
-        self.current_folio = Folio.new(self.fascicolo, self.seed + self.current_folio_index, self.rule_setup)
-        return true, "next"
-        
-    elseif self.current_folio.busted then
-        -- Folio perso
-        local rep_loss = 3
-        self.reputation = self.reputation - rep_loss
-        print(string.format("[Run] Folio BUST! -%d reputation (now: %d)", rep_loss, self.reputation))
-        
-        -- Check game over
-        if self.reputation <= 0 then
-            self.game_over = true
-            log("[Run] GAME OVER! Reputation depleted!")
-            return false, "game_over"
-        end
-        
-        -- Nuovo folio (stessa posizione, si riprova)
-        self.current_folio = Folio.new(self.fascicolo, self.seed + self.current_folio_index + 1000, self.rule_setup)
-        return true, "retry"
-    end
-    
-    return false, "in_progress"
-end
-
---- Calcola reward per folio completato
-function Run:calculateFolioReward()
-    local reward = {coins = 30, reputation = 0}  -- Base
-    
-    local folio = self.current_folio
-    for elem, bonus in pairs(Folio.BONUS) do
-        if folio.elements[elem].completed then
-            reward.coins = reward.coins + (bonus.coins or 0)
-            reward.reputation = reward.reputation + (bonus.reputation or 0)
-        end
-    end
-    
-    -- Pardon: bonus se pochi stain e nessun peccato
-    if folio.stain_count < 2 then
-        reward.reputation = reward.reputation + 2
-        log("[Run] Pardon! +2 reputation")
-    end
-    
-    return reward
-end
-
---- Stato per UI
-function Run:getStatus()
-    local cards = self.rule_setup and self.rule_setup.cards or {}
-    return {
-        fascicolo = self.fascicolo,
-        folio = string.format("%d/%d", self.current_folio_index, self.total_folii),
-        reputation = self.reputation,
-        coins = self.coins,
-        seed = self.seed,
-        game_over = self.game_over,
-        victory = self.victory,
-        cards = {
-            commission = cards.commission and cards.commission.name or nil,
-            parchment = cards.parchment and cards.parchment.name or nil,
-            tool = cards.tool and cards.tool.name or nil,
-        },
-    }
-end
-
--- Esporta sia Folio che Run
-return {
-    Folio = Folio,
-    Run = Run,
-}
+return Folio
 

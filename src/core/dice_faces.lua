@@ -1,95 +1,76 @@
--- src/core/dice_faces.lua
--- Sistema di mappatura facce del dado → pigmenti storici
---
--- Mappatura fissa (NON cambiare):
---   1 = BROWN (marroni/terre)
---   2 = GREEN (verdi)
---   3 = BLACK (inchiostri neri)
---   4 = RED (rossi)
---   5 = BLUE (blu)
---   6 = GOLD/YELLOW (gialli/oro)
---
--- BIANCO e VIOLA non sono su facce base: entrano come effetti speciali.
 
 local Pigments = require("src.content.pigments")
 
 local M = {}
 
--- ══════════════════════════════════════════════════════════════════
--- TABELLA FACCE → PIGMENTI
--- ══════════════════════════════════════════════════════════════════
 
 M.DiceFaces = {
     [1] = {
         family = "BROWN",
         fallback = "OCRA_BRUNA",
         pigments = {
-            "OCRA_BRUNA",      -- tier 1
+            "OCRA_BRUNA",
         },
     },
     [2] = {
         family = "GREEN",
         fallback = "VERDERAME",
         pigments = {
-            "VERDERAME",       -- tier 2
-            "VERGAUT",         -- tier 3
-            "MALACHITE",       -- tier 5
+            "VERDERAME",
+            "VERGAUT",
+            "MALACHITE",
         },
     },
     [3] = {
         family = "BLACK",
         fallback = "NERO_CARBONIOSO",
         pigments = {
-            "NERO_CARBONIOSO",   -- tier 1
-            "NERO_FERROGALLICO", -- tier 1
+            "NERO_CARBONIOSO",
+            "NERO_FERROGALLICO",
         },
     },
     [4] = {
         family = "RED",
         fallback = "OCRA_ROSSA",
         pigments = {
-            "OCRA_ROSSA",      -- tier 1
-            "ROBBIA",          -- tier 3
-            "BRAZILWOOD",      -- tier 3
-            "MINIO",           -- tier 4
-            "VERMIGLIONE",     -- tier 4
-            "KERMES",          -- tier 5
-            "REALGAR",         -- tier 6
+            "OCRA_ROSSA",
+            "ROBBIA",
+            "BRAZILWOOD",
+            "MINIO",
+            "VERMIGLIONE",
+            "KERMES",
+            "REALGAR",
         },
     },
     [5] = {
         family = "BLUE",
         fallback = "GUADO",
         pigments = {
-            "GUADO",           -- tier 2
-            "AZZURRITE",       -- tier 3
-            "LAPISLAZZULI",    -- tier 5
-            "BLU_EGIZIO",      -- tier 6
+            "GUADO",
+            "AZZURRITE",
+            "LAPISLAZZULI",
+            "BLU_EGIZIO",
         },
     },
     [6] = {
         family = "GOLD",
         fallback = "OCRA_GIALLA",
         pigments = {
-            "OCRA_GIALLA",     -- tier 1
-            "RESEDA",          -- tier 2
-            "CURCUMA",         -- tier 2
-            "CAMOMILLA",       -- tier 2
-            "ZAFFERANO",       -- tier 2
-            "GIALLORINO",      -- tier 4
-            "ORO_FOGLIA",      -- tier 5
-            "ORO_POLVERE",     -- tier 5
-            "ORPIMENTO",       -- tier 6
-            "ORO_MUSIVO",      -- tier 6
+            "OCRA_GIALLA",
+            "RESEDA",
+            "CURCUMA",
+            "CAMOMILLA",
+            "ZAFFERANO",
+            "GIALLORINO",
+            "ORO_FOGLIA",
+            "ORO_POLVERE",
+            "ORPIMENTO",
+            "ORO_MUSIVO",
         },
     },
 }
 
--- ══════════════════════════════════════════════════════════════════
--- FUNZIONI
--- ══════════════════════════════════════════════════════════════════
 
---- Ottiene il colore RGB di un pigmento dal database
 ---@param pigmentName string Nome esatto del pigmento (es. "OCRA_ROSSA")
 ---@return table {r, g, b} o nil se non trovato
 function M.getDieColor(pigmentName)
@@ -97,11 +78,9 @@ function M.getDieColor(pigmentName)
     if pigment and pigment.color then
         return pigment.color
     end
-    -- Fallback: grigio neutro se pigmento non trovato
     return {128, 128, 128}
 end
 
---- Ottiene il nome della famiglia colore per una faccia
 ---@param face number 1-6
 ---@return string Nome famiglia (BROWN, GREEN, BLACK, RED, BLUE, GOLD)
 function M.getFamilyName(face)
@@ -109,10 +88,9 @@ function M.getFamilyName(face)
     return faceData and faceData.family or "UNKNOWN"
 end
 
---- Filtra pigmenti disponibili per una faccia dato il maxTier sbloccato
 ---@param face number 1-6
 ---@param maxTier number Tier massimo sbloccato (1-7)
----@return table Lista di {name, tier, weight} filtrati
+---@return table Filtered list of {name, tier, weight}
 local function getAvailablePigments(face, maxTier)
     local faceData = M.DiceFaces[face]
     if not faceData then
@@ -123,7 +101,6 @@ local function getAvailablePigments(face, maxTier)
     for _, pigmentName in ipairs(faceData.pigments) do
         local pigment = Pigments.get(pigmentName)
         if pigment and pigment.tier <= maxTier then
-            -- Peso inversamente proporzionale al tier (favorisce tier bassi)
             local weight = 1 / pigment.tier
             table.insert(available, {
                 name = pigmentName,
@@ -136,10 +113,9 @@ local function getAvailablePigments(face, maxTier)
     return available
 end
 
---- Seleziona un pigmento casuale pesato per una faccia
 ---@param face number 1-6
 ---@param maxTier number Tier massimo sbloccato (1-7)
----@param rng? function Funzione RNG opzionale (default: math.random)
+---@param rng? function Optional RNG function (default: math.random)
 ---@return string Nome del pigmento selezionato
 function M.pickPigmentForFace(face, maxTier, rng)
     rng = rng or math.random
@@ -147,23 +123,19 @@ function M.pickPigmentForFace(face, maxTier, rng)
     
     local faceData = M.DiceFaces[face]
     if not faceData then
-        -- Faccia invalida: fallback generico
         return "OCRA_GIALLA"
     end
     
     local available = getAvailablePigments(face, maxTier)
     
-    -- Se nessun pigmento disponibile, usa fallback
     if #available == 0 then
         return faceData.fallback
     end
     
-    -- Se un solo pigmento, restituiscilo direttamente
     if #available == 1 then
         return available[1].name
     end
     
-    -- Selezione pesata
     local totalWeight = 0
     for _, p in ipairs(available) do
         totalWeight = totalWeight + p.weight
@@ -179,20 +151,17 @@ function M.pickPigmentForFace(face, maxTier, rng)
         end
     end
     
-    -- Safety fallback
     return available[#available].name
 end
 
---- Genera un set di pigmenti per tutti i dadi di un roll (es. 4d6)
----@param numDice number Numero di dadi
----@param values table Array di valori (1-6) per ogni dado
----@param maxTier number Tier massimo sbloccato
----@param seed? number Seed opzionale per RNG deterministico
----@return table Array di pigmentName per ogni dado
+---@param numDice number Number of dice
+---@param values table Array of values (1-6) for each die
+---@param maxTier number Maximum unlocked tier
+---@param seed? number Optional seed for deterministic RNG
+---@return table Array of pigment names, one for each die
 function M.pickPigmentsForRoll(numDice, values, maxTier, seed)
     local rng
     if seed then
-        -- RNG deterministico basato su seed
         local state = seed
         rng = function()
             state = (state * 1103515245 + 12345) % 2147483648
@@ -211,9 +180,8 @@ function M.pickPigmentsForRoll(numDice, values, maxTier, seed)
     return pigments
 end
 
---- Ottiene tutti i pigmenti di una famiglia (per UI/inventario)
 ---@param face number 1-6
----@return table Array di pigmentName
+---@return table Array of pigment names
 function M.getAllPigmentsForFace(face)
     local faceData = M.DiceFaces[face]
     if not faceData then
@@ -222,7 +190,6 @@ function M.getAllPigmentsForFace(face)
     return faceData.pigments
 end
 
---- Debug: stampa info su una faccia
 ---@param face number 1-6
 ---@param maxTier number Tier massimo sbloccato
 function M.debugPrintFace(face, maxTier)

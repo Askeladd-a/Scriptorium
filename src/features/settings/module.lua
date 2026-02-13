@@ -1,5 +1,3 @@
--- src/modules/settings.lua
--- Modulo impostazioni in stile pergamena (ispirata a Potion Craft)
 
 local Settings = {}
 local SettingsState = require("src.core.settings_state")
@@ -62,10 +60,10 @@ local section_font = nil
 local content_font = nil
 local action_font = nil
 
-local view_mode = "sections"        -- "sections" | "content"
+local view_mode = "sections"
 local selected_tab = 1
-local selected_section_entry = 1    -- 1..#tabs, #tabs+1=Indietro
-local selected_content_index = 1    -- controls first, then actions
+local selected_section_entry = 1
+local selected_content_index = 1
 local hovered_id = nil
 local layout_cache = nil
 local cached_scale = nil
@@ -461,7 +459,7 @@ local function build_layout()
             return controls_h + middle_h + actions_h, controls_h, actions_h, middle_h
         end
 
-        local total_h, controls_h, actions_h, middle_h = total_height()
+        local total_h, controls_h, _, middle_h = total_height()
         while total_h > available_h and (row_gap > 4 or action_gap > 2 or block_gap > 8) do
             if row_gap >= action_gap and row_gap > 4 then
                 row_gap = row_gap - 1
@@ -470,13 +468,13 @@ local function build_layout()
             elseif block_gap > 8 then
                 block_gap = block_gap - 1
             end
-            total_h, controls_h, actions_h, middle_h = total_height()
+            total_h, controls_h, _, middle_h = total_height()
         end
 
         local min_row_h = math.max(content_font_h + 2, math.floor(base_row_h * 0.74))
         while total_h > available_h and row_h > min_row_h do
             row_h = row_h - 1
-            total_h, controls_h, actions_h, middle_h = total_height()
+            total_h, controls_h, _, middle_h = total_height()
         end
 
         local controls_top = top_anchor
@@ -733,7 +731,6 @@ function Settings:enter()
 end
 
 function Settings:update(dt)
-    -- Reserved for future transitions/animations
 end
 
 function Settings:draw()
@@ -752,7 +749,6 @@ function Settings:draw()
 end
 
 function Settings:keypressed(_key)
-    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function Settings:mousepressed(x, y, button)

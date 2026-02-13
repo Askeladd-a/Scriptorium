@@ -2,6 +2,7 @@
 -- Legacy reference file (non-entrypoint): the active runtime entrypoint is main.lua.
 -- Snapshot storico del bootstrap gioco Scriptorium Alchimico
 -- Conservato per confronto, non usato nel run corrente
+---@diagnostic disable: duplicate-set-field
 
 -- Carica moduli esistenti
 require("core")
@@ -13,7 +14,7 @@ require("src.engine3d.light")
 
 -- Carica moduli gioco
 local ModuleManager = require("src.core.module_manager")
-local Scriptorium = require("src.modules.scriptorium")
+local Scriptorium = require("src.features.scriptorium.module")
 
 -- Configurazione board (dal main.lua originale)
 config = {
@@ -57,7 +58,7 @@ function love.load()
         local sy = row * 1.0
         
         dice[i] = {
-            star = newD6star(dice_size):set({sx, sy, 8}, {(i % 2 == 0) and 3 or -3, (i % 2 == 0) and -2 or 2, 0}, {1, 1, 2}),
+            body = newD6Body(dice_size):set({sx, sy, 8}, {(i % 2 == 0) and 3 or -3, (i % 2 == 0) and -2 or 2, 0}, {1, 1, 2}),
             die = clone(d6, {
                 material = light.plastic,
                 color = {200, 0, 20, 150},     -- Rosso originale
@@ -67,9 +68,9 @@ function love.load()
         }
         
         -- Applica preset BONE per fisica realistica
-        materials.apply(dice[i].star, materials.get("bone"))
+        materials.apply(dice[i].body, materials.get("bone"))
         
-        box[i] = dice[i].star
+        box[i] = dice[i].body
     end
     
     -- Seed RNG
@@ -140,7 +141,7 @@ function love.draw()
     
     -- Shadows
     for i = 1, #dice do
-        render.shadow(function(z, f) f() end, dice[i].die, dice[i].star)
+        render.shadow(function(z, f) f() end, dice[i].die, dice[i].body)
     end
     -- render.edgeboard() -- removed: covers outside tray with black (caused unwanted black background)
     
@@ -149,7 +150,7 @@ function love.draw()
     render.tray_border(render.zbuffer, 0.8, 0.9)
     render.bulb(render.zbuffer)
     for i = 1, #dice do
-        render.die(render.zbuffer, dice[i].die, dice[i].star)
+        render.die(render.zbuffer, dice[i].die, dice[i].body)
     end
     render.paint()
     
@@ -285,14 +286,14 @@ function rollAllDice()
     
     for i = 1, #dice do
         local jitter = 0.05 * (i - (#dice + 1) / 2)
-        dice[i].star.position = vector{sx + jitter, sy - jitter, rz}
-        dice[i].star.asleep = false
-        dice[i].star.sleep_timer = 0
-        dice[i].star.wall_hits = 0
-        dice[i].star.angular = vector{(rnd() - 0.5) * 12, (rnd() - 0.5) * 12, (rnd() - 0.5) * 12}
+        dice[i].body.position = vector{sx + jitter, sy - jitter, rz}
+        dice[i].body.asleep = false
+        dice[i].body.sleep_timer = 0
+        dice[i].body.wall_hits = 0
+        dice[i].body.angular = vector{(rnd() - 0.5) * 12, (rnd() - 0.5) * 12, (rnd() - 0.5) * 12}
         
         local noise = 1.2
-        dice[i].star.velocity = vector{
+        dice[i].body.velocity = vector{
             base_velocity[1] + (rnd() - 0.5) * noise,
             base_velocity[2] + (rnd() - 0.5) * noise,
             base_velocity[3] + (rnd() - 0.5) * noise * 0.5
@@ -307,7 +308,7 @@ function checkDiceSettled(dt)
     
     local all_stable = true
     for i = 1, #dice do
-        local s = dice[i].star
+        local s = dice[i].body
         if not s.asleep then
             all_stable = false
             break
@@ -343,7 +344,7 @@ function readDiceValues()
     local values = {}
     
     for i = 1, #dice do
-        local value = readDieFace(dice[i].star)
+        local value = readDieFace(dice[i].body)
         table.insert(values, value)
     end
     
@@ -365,7 +366,7 @@ local FACE_TO_PIP = {
 
 --- Legge la faccia superiore di un dado
 ---@diagnostic disable-next-line: lowercase-global
-function readDieFace(star)
+function readDieFace(body)
     -- Le facce del D6 (da geometry.lua)
     -- faces={{1,2,3,4}, {5,6,7,8}, {1,2,6,5},{2,3,7,6},{3,4,8,7},{4,1,5,8}}
     -- Le texture 1.png-6.png corrispondono agli indici delle facce
@@ -380,7 +381,7 @@ function readDieFace(star)
         
         -- Calcola Z medio dei vertici della faccia (già ruotati)
         for _, vert_idx in ipairs(face) do
-            local vertex = star[vert_idx]
+            local vertex = body[vert_idx]
             center_z = center_z + vertex[3]
         end
         center_z = center_z / #face
@@ -394,3 +395,4 @@ function readDieFace(star)
     -- Converti indice faccia geometrica a valore pip (dado standard)
     return FACE_TO_PIP[best_face] or best_face
 end
+---@diagnostic enable: duplicate-set-field

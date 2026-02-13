@@ -1,12 +1,9 @@
--- src/modules/reward.lua
--- Schermata di selezione ricompensa (tool) dopo completamento folio
 
 local RewardUI = require("src.ui.reward")
 local AudioManager = require("src.core.audio_manager")
 
 local RewardModule = {}
 
--- Available tools (inspired by RewardScreen.tsx)
 local AVAILABLE_TOOLS = {
     { id = "reroll", name = "Scraper", description = "Reroll all dice once during the turn", uses = 2, icon = "↻" },
     { id = "flip", name = "Mirror", description = "Flip one die value (1↔6, 2↔5, 3↔4)", uses = 3, icon = "⧉" },
@@ -33,7 +30,6 @@ end
 
 function RewardModule:enter(params)
     run = params and params.run or nil
-    -- Shuffle and pick 3 tools
     shuffled = {}
     for i, t in ipairs(AVAILABLE_TOOLS) do shuffled[i] = t end
     for i = #shuffled, 2, -1 do
@@ -46,7 +42,6 @@ function RewardModule:enter(params)
 end
 
 function RewardModule:update(dt)
-    -- Reserved
 end
 
 function RewardModule:draw()
@@ -54,7 +49,6 @@ function RewardModule:draw()
 end
 
 function RewardModule:keypressed(_key)
-    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function RewardModule:mousemoved(x, y, _dx, _dy)

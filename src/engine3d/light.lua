@@ -11,8 +11,6 @@ function light.generic(diffuse, specular, transparent, point, normal)
   local att=math.min(1,10/str)
   ray=ray/str
   
-  --transparent objects can have their backfaces lit as well
-  --however, specular lighting can only be on the front face
   
   local diff,spec=-math.min(normal..ray,0),0
   if specular and specular>0.0 and diff>0 then
@@ -37,14 +35,13 @@ function light.plastic(...) return light.generic(0.9,0.0,true,...) end
 local relax=0
 local memory=nil
 local drift=vector{0,0,0}
-function light.follow(star,dt)
+function light.follow(body,dt)
 
-    --where to go?
     local target
-    if star then
-      target=star.position
+    if body then
+      target=body.position
       relax=1.5
-      memory=star
+      memory=body
     elseif relax>0 then
       target=memory.position
       relax=relax-dt
@@ -53,9 +50,8 @@ function light.follow(star,dt)
     end
     
     
-    --how fast?
     local diff=target+vector{0,0,6}-light
-    if star then
+    if body then
       diff=diff*dt*5
     elseif relax>0 then
       diff=diff*dt*2
@@ -66,7 +62,6 @@ function light.follow(star,dt)
     end
     light:set(unpack(light+diff))
 
-    --let the bulb dance brownian as well
     local dx,dy,dz=0,0,0
     for i=1,1000*dt do
       dx=dx+math.random()-0.5

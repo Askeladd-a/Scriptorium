@@ -3,19 +3,15 @@ local AudioManager = require("src.core.audio_manager")
 local RuntimeUI = require("src.core.runtime_ui")
 local logo = nil
 
--- Animation state
 local timer = 0
-local inkProgress = 0 -- 0..1
+local inkProgress = 0
 
--- Timings (match the attached design timings)
 local T_INK_START = 0.8
 local T_INK_DURATION = 2.5
 local T_COMPLETE = 5.5
 
 local titleFont = nil
 local titleFontSize = 0
-local fadeIn = false
-local fadeOut = false
 
 local function switchToMainMenu()
     if _G.set_module then
@@ -27,15 +23,10 @@ end
 
 function Splash:enter()
     timer = 0
-    fadeIn = false
-    fadeOut = false
     inkProgress = 0
-    -- load background if present
     pcall(function() logo = love.graphics.newImage("resources/ui/splash.png") end)
-    -- load fonts (fall back to default if missing)
     local desiredSize = RuntimeUI.sized(96)
     if not titleFont or titleFontSize ~= desiredSize then
-        -- Try several Manuskript font filenames (exact provided file, then common fallback)
         local candidates = {
             "resources/font/ManuskriptGothischUNZ1A.ttf"
         }
@@ -55,7 +46,6 @@ function Splash:enter()
             titleFontSize = desiredSize
         end
     end
-    -- subtitle removed (design uses only the main title)
 end
 
 function Splash:update(dt)
@@ -66,12 +56,10 @@ function Splash:update(dt)
     local complete_time = reduced and (T_COMPLETE * 0.42) or T_COMPLETE
 
     timer = timer + dt * speed
-    -- ink animation
     if timer >= ink_start then
         local t = math.min((timer - ink_start) / ink_duration, 1)
         inkProgress = t
     end
-    -- complete
     if timer >= complete_time then
         switchToMainMenu()
     end
@@ -81,7 +69,6 @@ local function drawCenteredBackground(w, h)
     if logo then
         local lw, lh = logo:getWidth(), logo:getHeight()
         local scale = math.max((w) / lw, (h) / lh)
-        -- cover the screen
         love.graphics.setColor(1,1,1,1)
         love.graphics.draw(logo, w/2 - (lw*scale)/2, h/2 - (lh*scale)/2, 0, scale, scale)
     else
@@ -95,20 +82,15 @@ function Splash:draw()
     local high_contrast = RuntimeUI.high_contrast()
     if love.graphics.clear then love.graphics.clear(0, 0, 0, 1) end
 
-    -- Background
     drawCenteredBackground(w, h)
 
-    -- No fade overlay: draw directly
 
-    -- Decorative flourishes
     local tf = titleFont or love.graphics.getFont()
     love.graphics.setFont(tf)
     local title = "Scriptorium"
-    -- Outline/background faint text
     love.graphics.setColor(0.09,0.05,0.03,high_contrast and 0.22 or 0.12)
     love.graphics.printf(title, 0, h/2 - 80, w, "center")
 
-    -- Ink reveal: draw masked filled text by using scissor
     love.graphics.setColor(high_contrast and 0.10 or 0.17, high_contrast and 0.05 or 0.09, high_contrast and 0.02 or 0.05)
     local textWidth = tf:getWidth(title)
     local tx = (w - textWidth) / 2
@@ -120,11 +102,9 @@ function Splash:draw()
         love.graphics.setScissor()
     end
 
-    -- subtitle intentionally omitted to match design
 end
 
 function Splash:keypressed(_key)
-    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function Splash:mousepressed(x,y,button)

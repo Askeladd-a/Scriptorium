@@ -1,5 +1,3 @@
--- src/core/resolution_manager.lua
--- Clean-room virtual resolution manager for UI rendering and input mapping.
 
 local ResolutionManager = {}
 

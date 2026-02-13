@@ -4,8 +4,11 @@
   "Lua.workspace.ignoreDir": [
     ".git",
     "docs",
+    "legacy",
     "resources/shaders",
-    "resources/shaders/**"
+    "resources/shaders/**",
+    "legacy/main_game.lua",
+    "**/legacy/main_game.lua"
   ],
   "Lua.diagnostics.globals": [
     "love",
@@ -16,7 +19,7 @@
     "render",
     "materials",
     "box",
-    "star",
+    "body",
     "vector",
     "rotation",
     "pretty",

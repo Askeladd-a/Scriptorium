@@ -1,13 +1,10 @@
--- src/core/module_manager.lua
--- Gestisce i moduli runtime (menu, scriptorium, biblioteca, ecc.)
 
 local ModuleManager = {
-    current = nil,      -- Modulo attivo
-    modules = {},       -- Registry moduli
-    transition = nil,   -- Transizione in corso (future)
+    current = nil,
+    modules = {},
+    transition = nil,
 }
 
---- Registra un modulo
 ---@param name string Nome univoco del modulo
 ---@param module table Oggetto modulo con metodi: enter, exit, update, draw, keypressed, mousepressed
 function ModuleManager.register(name, module)
@@ -15,19 +12,16 @@ function ModuleManager.register(name, module)
     ModuleManager.modules[name] = module
 end
 
---- Cambia modulo
 ---@param name string Nome del modulo target
 ---@param ... any Parametri da passare a module:enter()
 function ModuleManager.switch(name, ...)
     local next_module = ModuleManager.modules[name]
     assert(next_module, "Module not found: " .. name)
     
-    -- Exit dal modulo corrente
     if ModuleManager.current and ModuleManager.current.exit then
         ModuleManager.current:exit()
     end
     
-    -- Enter nel nuovo modulo
     ModuleManager.current = next_module
     if ModuleManager.current.enter then
         ModuleManager.current:enter(...)
@@ -36,21 +30,18 @@ function ModuleManager.switch(name, ...)
     log("[ModuleManager] Switched to: " .. name)
 end
 
---- Update del modulo corrente
 function ModuleManager.update(dt)
     if ModuleManager.current and ModuleManager.current.update then
         ModuleManager.current:update(dt)
     end
 end
 
---- Draw del modulo corrente
 function ModuleManager.draw()
     if ModuleManager.current and ModuleManager.current.draw then
         ModuleManager.current:draw()
     end
 end
 
---- Forward degli input
 function ModuleManager.keypressed(key, scancode, isrepeat)
     if ModuleManager.current and ModuleManager.current.keypressed then
         ModuleManager.current:keypressed(key, scancode, isrepeat)

@@ -1,5 +1,3 @@
--- src/modules/main_menu.lua
--- Modulo menu principale stile "libri impilati" (UI ridisegnata: pulsanti orizzontali)
 
 local MainMenu = {}
 local AudioManager = require("src.core.audio_manager")
@@ -21,13 +19,12 @@ local menu_items = {
     {label = "Quit", enabled = true},
 }
 
--- Positions anchored to resources/ui/menu.png reference space (1536x1024)
 local menu_positions_ref = {
-    {x = 172, y = 125, w = 220, h = 52}, -- Continue (book 1)
-    {x = 177, y = 232, w = 226, h = 54}, -- New Game (book 2)
-    {x = 182, y = 340, w = 232, h = 55}, -- Settings (book 3)
-    {x = 186, y = 458, w = 244, h = 58}, -- Wishlist Now! (book 4)
-    {x = 196, y = 593, w = 220, h = 54}, -- Quit (book 5)
+    {x = 172, y = 125, w = 220, h = 52},
+    {x = 177, y = 232, w = 226, h = 54},
+    {x = 182, y = 340, w = 232, h = 55},
+    {x = 186, y = 458, w = 244, h = 58},
+    {x = 196, y = 593, w = 220, h = 54},
 }
 
 local menu_positions_screen = nil
@@ -68,16 +65,14 @@ end
 
 
 
--- Save detection and wishlist URL
 local save_file_candidate = nil
 local WISHLIST_URL = "https://store.steampowered.com/"
 
--- Simple in-menu modal for stubs (settings, messages)
 local modal_message = nil
 local modal_timer = 0
 
 local selected = nil
-local hovered = nil -- Indice del pulsante sotto il mouse
+local hovered = nil
 local mouse_has_moved = false
 
 local function get_audio_settings()
@@ -102,20 +97,17 @@ local function get_menu_music_volume()
 end
 
 function MainMenu:enter()
-    -- Reset selezione
     selected = nil
     hovered = nil
     mouse_has_moved = false
     log("[MainMenu] enter() called")
-    -- Log audio subsystem state
     if love.audio and love.audio.getActiveSourceCount then
-        local ok, cnt = pcall(function() return love.audio.getActiveSourceCount() end)
+        local _, cnt = pcall(function() return love.audio.getActiveSourceCount() end)
         log(string.format("[MainMenu] love.audio active source count: %s", tostring(cnt)))
     else
         log("[MainMenu] love.audio API not available or missing getActiveSourceCount")
     end
 
-    -- Load menu font once (safe)
     local desired_font_size = RuntimeUI.sized(19)
     if not menu_font or menu_font_size ~= desired_font_size then
         local candidates = {
@@ -136,7 +128,6 @@ function MainMenu:enter()
             end
         end
         if not menu_font then
-            -- fallback to system font
             local ok, f = pcall(function() return love.graphics.newFont(desired_font_size) end)
             menu_font = (ok and f) or love.graphics.getFont()
             menu_font_size = desired_font_size
@@ -144,7 +135,6 @@ function MainMenu:enter()
         end
     end
 
-    -- load menu background image (optional)
     if not menu_bg then
         if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo("resources/ui/menu.png") then
             pcall(function()
@@ -153,7 +143,6 @@ function MainMenu:enter()
         end
     end
 
-    -- Simplified: force load the converted .ogg file
     if not music then
         local ogg = "resources/sounds/maintitle.ogg"
         if love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(ogg) then
@@ -169,26 +158,19 @@ function MainMenu:enter()
                 log(string.format("[MainMenu] play called .ogg success=%s isPlaying=%s", tostring(played_ok), tostring(music:isPlaying())))
                 _G.menu_music_source = music
                 AudioManager.register_music_source("main_menu", music)
-            else
-                -- silent failure loading menu music
             end
-        else
-            -- maintitle.ogg not found
         end
     elseif not music:isPlaying() then
         pcall(function() music:setVolume(get_menu_music_volume()) end)
         pcall(function() music:play() end)
     end
 
-    -- Optional silent diagnostics and fallbacks (no console logs)
     if music then
-        -- attempt to ensure it's playing; keep diagnostics silent
         pcall(function() music:getDuration() end)
         pcall(function() music:getVolume() end)
         pcall(function() music:isPlaying() end)
         pcall(function() love.audio.play(music) end)
 
-        -- If still not playing, try static SoundData fallback (silent)
         local still_playing = false
         pcall(function() still_playing = music:isPlaying() end)
         if not still_playing and love.sound and love.sound.newSoundData then
@@ -206,8 +188,6 @@ function MainMenu:enter()
                 end
             end
         end
-    else
-        -- music not available (silent)
     end
 
     if music then
@@ -215,7 +195,6 @@ function MainMenu:enter()
         AudioManager.register_music_source("main_menu", music)
     end
 
-    -- Detect save file presence (enable Continue if found)
     local save_candidates = {
         "scriptorium_save.dat",
         "scriptorium_save.lua",
@@ -228,7 +207,6 @@ function MainMenu:enter()
         for _, fname in ipairs(save_candidates) do
             local info = pcall(function() return love.filesystem.getInfo(fname) end)
             if info then
-                -- prefer the first existing file
                 save_file_candidate = fname
                 break
             end
@@ -243,19 +221,15 @@ function MainMenu:enter()
 end
 
 function MainMenu:exit()
-    -- Stub
 end
 
 function MainMenu:update(dt)
-    -- Stub (animazioni future)
-    -- If we have a loaded music Source but it's not playing, try once to play it
     if music and not music:isPlaying() and not music_play_attempted then
         music_play_attempted = true
         pcall(function() music:play() end)
     end
     AudioManager.refresh_music()
 
-    -- Modal timer
     if modal_timer and modal_timer > 0 then
         modal_timer = modal_timer - dt
         if modal_timer <= 0 then modal_message = nil; modal_timer = 0 end
@@ -265,10 +239,7 @@ end
 function MainMenu:draw()
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
     local high_contrast = RuntimeUI.high_contrast()
-    local reduced_motion = RuntimeUI.reduced_animations()
-    -- Ensure full-screen scissor reset
     if love.graphics.setScissor then love.graphics.setScissor() end
-    -- draw menu background if available, otherwise fallback to solid black
     if menu_bg then
         local bg_x, bg_y, _, _, scale = get_menu_background_rect(w, h)
         love.graphics.setColor(1, 1, 1, 1)
@@ -284,10 +255,7 @@ function MainMenu:draw()
         end
     end
 
-    -- Tavolo (base) removed for full-black background in menu
-    -- (was: love.graphics.setColor(0.25,0.18,0.10) + rectangle at bottom)
 
-    -- Text-only menu items: place at absolute positions (static menu_positions)
     local font = menu_font or love.graphics.getFont()
     love.graphics.setFont(font)
     for i, item in ipairs(menu_items) do
@@ -300,9 +268,7 @@ function MainMenu:draw()
             local th = pos.h
             local isHovered = mouse_has_moved and (i == hovered)
 
-            -- Shadow for legibility (offset)
             love.graphics.setColor(0,0,0,high_contrast and 0.76 or 0.6)
-            -- center text inside the provided box
             local tfont = font
             local twidth = tfont:getWidth(text)
             local theight = tfont:getHeight()
@@ -310,7 +276,6 @@ function MainMenu:draw()
             local text_y = ty + (th - theight) / 2
             love.graphics.print(text, text_x + 2, text_y + 2)
 
-            -- Main text color
             if not item.enabled then
                 love.graphics.setColor(0.45,0.40,0.36,0.9)
             elseif i == selected then
@@ -322,10 +287,8 @@ function MainMenu:draw()
             end
             love.graphics.print(text, text_x, text_y)
         else
-            -- Fallback to stacked text if positions missing
             local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
             local spacing = 18
-            local tw = font:getWidth(text)
             local th = font:getHeight()
             local y = stack_y + (i-1) * (th + spacing)
             local isHovered = mouse_has_moved and (i == hovered)
@@ -343,12 +306,10 @@ function MainMenu:draw()
         end
     end
 
-    -- Decorative overlay removed (cards/coins/dice) per UI cleanup
 
-    -- Draw modal if present
     if modal_message then
-        local font = menu_font or love.graphics.getFont()
-        love.graphics.setFont(font)
+        local modal_font = menu_font or love.graphics.getFont()
+        love.graphics.setFont(modal_font)
         local bw, bh = 520, 140
         local mx, my = (w - bw) / 2, (h - bh) / 2
         love.graphics.setColor(0,0,0,high_contrast and 0.84 or 0.7)
@@ -359,7 +320,6 @@ function MainMenu:draw()
 end
 
 function MainMenu:keypressed(_key)
-    -- Mouse-only module: keyboard input intentionally disabled.
 end
 
 function MainMenu:mousepressed(x, y, button)
@@ -379,7 +339,6 @@ function MainMenu:mousepressed(x, y, button)
                 return
             end
         else
-            -- Fallback to text bounding box
             local left_x, stack_y = math.max(24, w * 0.04), h * 0.15
             local font = menu_font or love.graphics.getFont()
             local spacing = 18
@@ -442,7 +401,6 @@ function MainMenu:activate(idx)
             _G.set_module("scriptorium")
         end
     elseif item.label == "Continue" then
-        -- Try to use a save manager if present
         local ok, SaveManager = pcall(function() return require("src.engine.save_manager") end)
         if ok and SaveManager and SaveManager.load then
             local succ, data = pcall(function() return SaveManager.load() end)

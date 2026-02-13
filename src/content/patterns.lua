@@ -1,66 +1,36 @@
--- src/content/patterns.lua
--- Pattern per elementi del Folio in Scriptorium Alchimico
--- Ogni elemento ha la propria griglia con vincoli colore/valore
---
--- Elementi e dimensioni gameplay correnti:
---   TEXT      = 4x4 (16 celle)
---   BORDERS   = 3x4 (12 celle)
---   MINIATURE = 2x4 (8 celle)
---   DROPCAPS  = 2x3 (6 celle, "Dropcaps/Corners")
---
--- Vincoli:
---   nil      = nessun vincolo (cella libera)
---   "ROSSO"  = richiede pigmento rosso
---   "BLU"    = richiede pigmento blu
---   "VERDE"  = richiede pigmento verde
---   "GIALLO" = richiede pigmento giallo/oro
---   "VIOLA"  = richiede pigmento viola
---   "NERO"   = richiede pigmento nero
---   "MARRONE"= richiede pigmento marrone
---   1-6      = richiede dado con quel valore
 
 local TilePatternGenerator = require("src.content.tile_pattern_generator")
 
-local M = {}
+local Patterns = {}
 
-M.USE_TILE_GENERATOR = true
-M.TILE_ROWS = 4
-M.TILE_COLS = 5
-M.TILE_GENERATOR_SEED_MODE = "seeded" -- "seeded" | "random"
-M.TILE_GENERATOR_VARIATIONS = true
+Patterns.USE_TILE_GENERATOR = true
+Patterns.TILE_ROWS = 4
+Patterns.TILE_COLS = 5
+Patterns.TILE_GENERATOR_SEED_MODE = "seeded"
+Patterns.TILE_GENERATOR_VARIATIONS = true
 
-function M.setTileSeedMode(mode)
+function Patterns.setTileSeedMode(mode)
     if mode == "seeded" or mode == "random" then
-        M.TILE_GENERATOR_SEED_MODE = mode
+        Patterns.TILE_GENERATOR_SEED_MODE = mode
     end
 end
 
-function M.setTileVariationsEnabled(enabled)
-    M.TILE_GENERATOR_VARIATIONS = enabled and true or false
+function Patterns.setTileVariationsEnabled(enabled)
+    Patterns.TILE_GENERATOR_VARIATIONS = enabled and true or false
 end
 
--- ══════════════════════════════════════════════════════════════════
--- CONFIGURAZIONE ELEMENTI
--- ══════════════════════════════════════════════════════════════════
 
-M.ELEMENT_CONFIG = {
+Patterns.ELEMENT_CONFIG = {
     TEXT = { rows = 4, cols = 4, cells = 16 },
     DROPCAPS = { rows = 2, cols = 3, cells = 6 },
     BORDERS = { rows = 3, cols = 4, cells = 12 },
     MINIATURE = { rows = 2, cols = 4, cells = 8 },
-    -- Kept for backward compatibility in tooling/debug paths.
     CORNERS = { rows = 2, cols = 3, cells = 6 },
 }
 
--- ══════════════════════════════════════════════════════════════════
--- PATTERN PER ELEMENTO
--- ══════════════════════════════════════════════════════════════════
 
-M.patterns = {
+Patterns.library = {
 
-    -- ══════════════════════════════════════════════════════════════
-    -- TEXT (2×3 = 6 celle)
-    -- ══════════════════════════════════════════════════════════════
     {
         id = 1,
         element = "TEXT",
@@ -128,9 +98,6 @@ M.patterns = {
         }
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- DROPCAPS (1×2 = 2 celle)
-    -- ══════════════════════════════════════════════════════════════
     {
         id = 7,
         element = "DROPCAPS",
@@ -172,9 +139,6 @@ M.patterns = {
         }
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- BORDERS (2×2 = 4 celle)
-    -- ══════════════════════════════════════════════════════════════
     {
         id = 11,
         element = "BORDERS",
@@ -231,9 +195,6 @@ M.patterns = {
         }
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- CORNERS (2×2 = 4 celle)
-    -- ══════════════════════════════════════════════════════════════
     {
         id = 16,
         element = "CORNERS",
@@ -290,9 +251,6 @@ M.patterns = {
         }
     },
 
-    -- ══════════════════════════════════════════════════════════════
-    -- MINIATURE (1×3 = 3 celle)
-    -- ══════════════════════════════════════════════════════════════
     {
         id = 21,
         element = "MINIATURE",
@@ -335,22 +293,13 @@ M.patterns = {
     },
 }
 
--- ══════════════════════════════════════════════════════════════════
--- FUNZIONI HELPER
--- ══════════════════════════════════════════════════════════════════
 
---- Token favore iniziali per un pattern
----@param pattern table
----@return number
-function M.getInitialTokens(pattern)
+function Patterns.getInitialTokens(pattern)
     return math.max(0, 6 - pattern.difficulty)
 end
 
---- Ottiene pattern per ID
----@param id number
----@return table|nil
-function M.getById(id)
-    for _, p in ipairs(M.patterns) do
+function Patterns.getById(id)
+    for _, p in ipairs(Patterns.library) do
         if p.id == id then
             return p
         end
@@ -358,12 +307,9 @@ function M.getById(id)
     return nil
 end
 
---- Ottiene tutti i pattern per un elemento
----@param element string "TEXT", "DROPCAPS", etc.
----@return table[]
-function M.getByElement(element)
+function Patterns.getByElement(element)
     local result = {}
-    for _, p in ipairs(M.patterns) do
+    for _, p in ipairs(Patterns.library) do
         if p.element == element then
             table.insert(result, p)
         end
@@ -371,13 +317,9 @@ function M.getByElement(element)
     return result
 end
 
---- Ottiene pattern per elemento e difficoltà
----@param element string
----@param difficulty number
----@return table[]
-function M.getByElementAndDifficulty(element, difficulty)
+function Patterns.getByElementAndDifficulty(element, difficulty)
     local result = {}
-    for _, p in ipairs(M.patterns) do
+    for _, p in ipairs(Patterns.library) do
         if p.element == element and p.difficulty == difficulty then
             table.insert(result, p)
         end
@@ -385,16 +327,12 @@ function M.getByElementAndDifficulty(element, difficulty)
     return result
 end
 
---- Seleziona pattern casuale per un elemento
----@param element string
----@param seed? number opzionale
----@return table|nil
-function M.getRandomForElement(element, seed)
+function Patterns.getRandomForElement(element, seed)
     if seed then
         math.randomseed(seed)
     end
     
-    local available = M.getByElement(element)
+    local available = Patterns.getByElement(element)
     if #available == 0 then
         return nil
     end
@@ -402,26 +340,23 @@ function M.getRandomForElement(element, seed)
     return available[math.random(1, #available)]
 end
 
---- Seleziona set completo di pattern per tutti gli elementi
----@param seed? number opzionale
----@return table {TEXT=pattern, DROPCAPS=pattern, ...}
-function M.getRandomPatternSet(seed)
+function Patterns.getRandomPatternSet(seed)
     local elements = {"TEXT", "DROPCAPS", "BORDERS", "MINIATURE"}
 
-    if M.USE_TILE_GENERATOR then
+    if Patterns.USE_TILE_GENERATOR then
         local element_options = {}
         for _, elem in ipairs(elements) do
-            local cfg = M.ELEMENT_CONFIG[elem]
+            local cfg = Patterns.ELEMENT_CONFIG[elem]
             if cfg then
                 element_options[elem] = { rows = cfg.rows, cols = cfg.cols }
             end
         end
-        local generated = TilePatternGenerator.generate_set(seed, elements, {
-            rows = M.TILE_ROWS,
-            cols = M.TILE_COLS,
+        local generated = TilePatternGenerator.generateSet(seed, elements, {
+            rows = Patterns.TILE_ROWS,
+            cols = Patterns.TILE_COLS,
             element_options = element_options,
-            seed_mode = M.TILE_GENERATOR_SEED_MODE,
-            variations = M.TILE_GENERATOR_VARIATIONS,
+            seed_mode = Patterns.TILE_GENERATOR_SEED_MODE,
+            variations = Patterns.TILE_GENERATOR_VARIATIONS,
         })
         local complete = true
         for _, elem in ipairs(elements) do
@@ -437,83 +372,56 @@ function M.getRandomPatternSet(seed)
 
     local fallback = {}
     for i, elem in ipairs(elements) do
-        -- Seed diverso per ogni elemento ma riproducibile
-        local elemSeed = seed and (seed + i * 1000) or nil
-        fallback[elem] = M.getRandomForElement(elem, elemSeed)
+        local element_seed = seed and (seed + i * 1000) or nil
+        fallback[elem] = Patterns.getRandomForElement(elem, element_seed)
     end
 
     return fallback
 end
 
---- Converte indice lineare a coordinate riga,colonna
----@param pattern table
----@param index number
----@return number row, number col
-function M.indexToRowCol(pattern, index)
+function Patterns.indexToRowCol(pattern, index)
     local cols = pattern.cols
     local row = math.ceil(index / cols)
     local col = ((index - 1) % cols) + 1
     return row, col
 end
 
---- Converte coordinate a indice lineare
----@param pattern table
----@param row number
----@param col number
----@return number index
-function M.rowColToIndex(pattern, row, col)
+function Patterns.rowColToIndex(pattern, row, col)
     return (row - 1) * pattern.cols + col
 end
 
---- Ottiene vincolo di una cella
----@param pattern table
----@param row number
----@param col number
----@return string|number|nil vincolo
-function M.getConstraint(pattern, row, col)
-    local index = M.rowColToIndex(pattern, row, col)
+function Patterns.getConstraint(pattern, row, col)
+    local index = Patterns.rowColToIndex(pattern, row, col)
     return pattern.grid[index]
 end
 
---- Verifica se un dado può essere piazzato in una cella
----@param pattern table
----@param row number
----@param col number
----@param diceValue number 1-6
----@param diceColor string colore del dado ("ROSSO", "BLU", etc.)
----@return boolean canPlace
----@return string|nil reason
-function M.canPlace(pattern, row, col, diceValue, diceColor)
-    -- Verifica bounds
+function Patterns.canPlace(pattern, row, col, dice_value, dice_color)
     if row < 1 or row > pattern.rows or col < 1 or col > pattern.cols then
         return false, "Out of bounds"
     end
     
-    local constraint = M.getConstraint(pattern, row, col)
+    local constraint = Patterns.getConstraint(pattern, row, col)
     
     if constraint == nil then
-        return true, nil  -- nessun vincolo
+        return true, nil
     elseif type(constraint) == "number" then
-        if diceValue == constraint then
+        if dice_value == constraint then
             return true, nil
         else
-            return false, string.format("Richiede valore %d", constraint)
+            return false, string.format("Requires value %d", constraint)
         end
     elseif type(constraint) == "string" then
-        if diceColor == constraint then
+        if dice_color == constraint then
             return true, nil
         else
-            return false, string.format("Richiede colore %s", constraint)
+            return false, string.format("Requires color %s", constraint)
         end
     end
     
     return false, "Unknown constraint"
 end
 
---- Conta celle vuote (senza vincolo) in un pattern
----@param pattern table
----@return number
-function M.countFreeCells(pattern)
+function Patterns.countFreeCells(pattern)
     local count = 0
     for _, cell in ipairs(pattern.grid) do
         if cell == nil then
@@ -523,10 +431,7 @@ function M.countFreeCells(pattern)
     return count
 end
 
---- Conta celle con vincolo in un pattern
----@param pattern table
----@return number colorConstraints, number valueConstraints
-function M.countConstraints(pattern)
+function Patterns.countConstraints(pattern)
     local colors, values = 0, 0
     for _, cell in ipairs(pattern.grid) do
         if type(cell) == "string" then
@@ -538,24 +443,19 @@ function M.countConstraints(pattern)
     return colors, values
 end
 
---- Ottiene configurazione elemento
----@param element string
----@return table|nil {rows, cols, cells}
-function M.getElementConfig(element)
-    return M.ELEMENT_CONFIG[element]
+function Patterns.getElementConfig(element)
+    return Patterns.ELEMENT_CONFIG[element]
 end
 
---- Stampa pattern per debug
----@param pattern table
-function M.debugPrint(pattern)
+function Patterns.debugPrint(pattern)
     log(string.format("=== %s [%s] (diff: %d, tokens: %d) ===",
-        pattern.name, pattern.element, pattern.difficulty, M.getInitialTokens(pattern)))
-    log(string.format("    Griglia: %dx%d", pattern.rows, pattern.cols))
+        pattern.name, pattern.element, pattern.difficulty, Patterns.getInitialTokens(pattern)))
+    log(string.format("    Grid: %dx%d", pattern.rows, pattern.cols))
     
     for row = 1, pattern.rows do
         local line = "    "
         for col = 1, pattern.cols do
-            local c = M.getConstraint(pattern, row, col)
+            local c = Patterns.getConstraint(pattern, row, col)
             if c == nil then
                 line = line .. "[   ] "
             elseif type(c) == "number" then
@@ -568,18 +468,19 @@ function M.debugPrint(pattern)
     end
 end
 
---- Stampa tutti i pattern raggruppati per elemento
-function M.debugPrintAll()
+function Patterns.debugPrintAll()
     local elements = {"TEXT", "DROPCAPS", "BORDERS", "CORNERS", "MINIATURE"}
     for _, elem in ipairs(elements) do
         log("\n" .. string.rep("═", 50))
-        log("ELEMENTO: " .. elem)
+        log("ELEMENT: " .. elem)
         log(string.rep("═", 50))
-        for _, p in ipairs(M.getByElement(elem)) do
-            M.debugPrint(p)
+        for _, p in ipairs(Patterns.getByElement(elem)) do
+            Patterns.debugPrint(p)
             log("")
         end
     end
 end
 
-return M
+return Patterns
+
+

@@ -1,12 +1,6 @@
--- physics.lua
--- Consolidated from: stars.lua + materials.lua
--- Rigid body simulation and material presets
 
 require"core"
 
---------------------------------------------------------------------------------
--- MATERIALS
---------------------------------------------------------------------------------
 materials = {}
 
 materials.presets = {
@@ -16,7 +10,7 @@ materials.presets = {
     friction = 0.75,
     linear_damping = 0.15,
     angular_damping = 0.20,
-    color = {0.55, 0.35, 0.18}, -- darker brown
+    color = {0.55, 0.35, 0.18},
   },
   rubber = {
     mass = 1.0,
@@ -24,7 +18,7 @@ materials.presets = {
     friction = 0.85,
     linear_damping = 0.10,
     angular_damping = 0.15,
-    color = {0.08, 0.08, 0.10}, -- near-black (rubber)
+    color = {0.08, 0.08, 0.10},
   },
   plastic = {
     mass = 0.8,
@@ -32,7 +26,7 @@ materials.presets = {
     friction = 0.70,
     linear_damping = 0.12,
     angular_damping = 0.18,
-    color = {0.9, 0.2, 0.2}, -- red plastic
+    color = {0.9, 0.2, 0.2},
   },
   metal = {
     mass = 2.0,
@@ -40,7 +34,7 @@ materials.presets = {
     friction = 0.60,
     linear_damping = 0.08,
     angular_damping = 0.12,
-    color = {0.66, 0.68, 0.70}, -- cool metal gray
+    color = {0.66, 0.68, 0.70},
   },
   bone = {
     mass = 1.8,
@@ -48,56 +42,42 @@ materials.presets = {
     friction = 0.80,
     linear_damping = 0.12,
     angular_damping = 0.18,
-    color = {0.97, 0.94, 0.86}, -- warm ivory
+    color = {0.97, 0.94, 0.86},
   },
 }
 
--- Apply preset properties to a star-like object (mutates star)
-function materials.apply(star, preset)
-  if not star or not preset then return end
-  if preset.mass       then star.mass = preset.mass; star.invMass = (preset.mass ~= 0) and (1 / preset.mass) or 0 end
-  if preset.restitution then star.restitution = preset.restitution end
-  if preset.friction    then star.friction = preset.friction end
-  if preset.linear_damping then star.linear_damping = preset.linear_damping end
-  if preset.angular_damping then star.angular_damping = preset.angular_damping end
-  -- tag
-  star.material = preset
-  return star
+function materials.apply(body, preset)
+  if not body or not preset then return end
+  if preset.mass       then body.mass = preset.mass; body.invMass = (preset.mass ~= 0) and (1 / preset.mass) or 0 end
+  if preset.restitution then body.restitution = preset.restitution end
+  if preset.friction    then body.friction = preset.friction end
+  if preset.linear_damping then body.linear_damping = preset.linear_damping end
+  if preset.angular_damping then body.angular_damping = preset.angular_damping end
+  body.material = preset
+  return body
 end
 
 function materials.get(name)
   return materials.presets[name]
 end
 
---------------------------------------------------------------------------------
--- SIMULATION (stars in a box)
---------------------------------------------------------------------------------
--- simulates the behaviour of stars in a box
--- stars are set of points rigidly connected together
--- stars bounce when they hit a face of their box
--- stars bounce off each other as if they were spheres
 
 box={ timeleft=0 }
--- global damping to reduce lingering oscillations (linear and angular)
 box.linear_damping = 0.18
 box.angular_damping = 0.18
--- positional correction parameters and safety
-box.pos_slop = 0.05     -- INCREASED: ignores penetrations to prevent jitter on multi-tile contacts
-box.pos_percent = 0.08  -- REDUCED: correction strength (0-1, lower = less aggressive)
-box.max_steps = 5       -- max physics sub-steps per frame (spiral-of-death clamp)
-box.dv_max = 50         -- clamp for delta-velocity applied by impulses
--- sleep detection (from manual: prevents jitter)
-box.sleep_linear = 0.15   -- velocity threshold for sleeping (higher = sleeps sooner)
-box.sleep_angular = 0.20  -- angular velocity threshold (higher = sleeps sooner)
-box.sleep_time = 0.08     -- time below threshold before sleeping (very fast)
--- buffered logging to reduce I/O churn; lines are flushed once per update
+box.pos_slop = 0.05
+box.pos_percent = 0.08
+box.max_steps = 5
+box.dv_max = 50
+box.sleep_linear = 0.15
+box.sleep_angular = 0.20
+box.sleep_time = 0.08
 box.log_buffer = {}
 function box:set(x,y,z,gravity,bounce,friction,dt) 
   self.x,self.y,self.z=x or self.x, y or self.y, z or self.z
   self.gravity=gravity or self.gravity
   self.bounce=bounce or self.bounce
   self.friction=friction or self.friction
-  -- ensure a sensible default timestep if not provided
   self.dt=dt or self.dt or (1/60)
   return self
 end
@@ -107,17 +87,14 @@ function box:update(dt)
   local maxSteps = self.max_steps or 5
   local steps = 0
   while (self.timeleft > self.dt) and (steps < maxSteps) do
-    -- precompute gravity vector to avoid per-body allocations
     local gravity_vec = vector{0,0,-(self.gravity or 0) * self.dt}
     for i=1,#self do
       local s=self[i]
       
-      -- Skip physics for sleeping bodies (from manual)
       if not s.asleep then
-        -- CRITICAL: Count vertices touching ground AND check they're coplanar (same face)
         local vertices_on_ground = 0
-        local ground_z = 0.05  -- tighter tolerance for vertex-on-ground detection
-        local ground_vertices_z = {}  -- store Z values of grounded vertices
+        local ground_z = 0.05
+        local ground_vertices_z = {}
         for k=1,#s do
           local vertex_world_z = s[k][3] + s.position[3]
           if vertex_world_z <= ground_z then
@@ -126,7 +103,6 @@ function box:update(dt)
           end
         end
         
-        -- Check if grounded vertices are COPLANAR (same Z, meaning flat on one face)
         local is_flat = false
         if vertices_on_ground >= 4 and #ground_vertices_z >= 4 then
           local z_min = math.huge
@@ -135,33 +111,25 @@ function box:update(dt)
             z_min = math.min(z_min, z)
             z_max = math.max(z_max, z)
           end
-          -- Vertices are coplanar if Z spread is tiny (< 0.03)
           is_flat = (z_max - z_min) < 0.03
         end
         
-        -- Lock only if 4+ vertices on ground, coplanar, AND almost no movement
         local v_mag = s.velocity:abs()
         local w_mag = s.angular:abs()
         if is_flat and v_mag < 0.20 and w_mag < 0.15 then
-          -- Dice is stable and resting flat: LOCK completely
           s.velocity = vector{0,0,0}
           s.angular = vector{0,0,0}
           s.asleep = true
           s.sleep_timer = 999
         else
-          -- Normal physics for airborne or moving bodies
-          -- apply gravity as acceleration (independent of mass)
           s.velocity = s.velocity + gravity_vec
           s:update(self.dt)
-          -- pass global bounce/friction but allow per-star override inside star:wall
           s:box(-self.x,-self.y,0,self.x,self.y,self.z,self.bounce,self.friction)
           
-          -- RIM REJECTION: prevent dice from resting on tray border rim
-          -- The rim is at z = border_height (default 1.5) around the inner edge
           local border_height = self.border_height or 1.5
-          local rim_margin = 0.3  -- how close to edge triggers rim rejection
-          local rim_z_min = border_height * 0.3  -- start pushing when z > this
-          local rim_z_max = border_height + 0.5  -- stop caring above this
+          local rim_margin = 0.3
+          local rim_z_min = border_height * 0.3
+          local rim_z_max = border_height + 0.5
           
           local pos = s.position
           local near_x_edge = math.abs(pos[1]) > (self.x - rim_margin)
@@ -169,7 +137,6 @@ function box:update(dt)
           local in_rim_zone = pos[3] > rim_z_min and pos[3] < rim_z_max
           
           if in_rim_zone and (near_x_edge or near_y_edge) then
-            -- Apply inward push force to knock dice off the rim
             local push_strength = 2.0 * self.dt
             if near_x_edge then
               local dir = pos[1] > 0 and -1 or 1
@@ -179,14 +146,11 @@ function box:update(dt)
               local dir = pos[2] > 0 and -1 or 1
               s.velocity[2] = s.velocity[2] + dir * push_strength
             end
-            -- Also add slight downward push
             s.velocity[3] = s.velocity[3] - push_strength * 0.5
-            -- Wake up if sleeping
             s.asleep = false
             s.sleep_timer = 0
           end
           
-          -- apply damping: prefer per-star damping if present, else fall back to global
           local ld = (s.linear_damping ~= nil) and s.linear_damping or self.linear_damping or 0
           local ad = (s.angular_damping ~= nil) and s.angular_damping or self.angular_damping or 0
           if ld and ld > 0 then
@@ -200,12 +164,10 @@ function box:update(dt)
           if math.abs(s.angular[3])<0.1 then s.angular[3]=0 end
         end
       else
-        -- Force zero when asleep (prevent micro-drift)
         s.velocity = vector{0,0,0}
         s.angular = vector{0,0,0}
       end
       
-      -- Sleep detection with timer (from manual: prevents jitter)
       local v_mag = s.velocity:abs()
       local w_mag = s.angular:abs()
       local sleep_thresh_v = self.sleep_linear or 0.05
@@ -227,17 +189,15 @@ function box:update(dt)
       end
     end
     
-    -- broadphase: sweep-and-prune on X axis to reduce candidate pairs
     local n = #self
     if n > 1 then
       local intervals = {}
       for i=1,n do
         local body = self[i]
-        -- ensure radius cached
         if not body.radius then
           local r = 0
           for k=1,#body do r = math.max(r, vector(body[k] or {0,0,0}):abs()) end
-          body.radius = r * 0.75  -- 75%: better coverage for cubic dice
+          body.radius = r * 0.75
         end
         local minx = body.position[1] - body.radius
         local maxx = body.position[1] + body.radius
@@ -245,15 +205,13 @@ function box:update(dt)
       end
       table.sort(intervals, function(a,b) return a.minx < b.minx end)
 
-      -- sweep
       for ii=1,n do
         local A = intervals[ii]
         local a = self[A.idx]
         for jj = ii+1, n do
           local B = intervals[jj]
-          if B.minx > A.maxx then break end -- no overlap on x -> skip remaining
+          if B.minx > A.maxx then break end
           local b = self[B.idx]
-          -- quick AABB overlap on Y and Z to filter more
           local aymin, aymax = a.position[2] - a.radius, a.position[2] + a.radius
           local bymin, bymax = b.position[2] - b.radius, b.position[2] + b.radius
           if aymax < bymin or bymax < aymin then goto continue_pair end
@@ -261,37 +219,29 @@ function box:update(dt)
           local bzmin, bzmax = b.position[3] - b.radius, b.position[3] + b.radius
           if azmax < bzmin or bzmax < azmin then goto continue_pair end
 
-          -- precise sphere check
           local diff = b.position - a.position
           local dist = diff:abs()
           local minDist = a.radius + b.radius
           if dist > 0 and dist < minDist then
-            -- CRITICAL: Skip collision if BOTH bodies are asleep (prevents jitter wake-up loop)
             if a.asleep and b.asleep then
-              goto continue_pair  -- don't process this collision
+              goto continue_pair
             end
             
-            -- perform standard instantaneous collision resolution
             local normal = diff * (1/dist)
-            -- relative velocity along normal
             local rel = (b.velocity - a.velocity)..normal
             
-            -- Wake sleeping bodies on collision (only if at least one awake)
             if a.asleep then a.asleep = false a.sleep_timer = 0 end
             if b.asleep then b.asleep = false b.sleep_timer = 0 end
             
-            -- Only resolve if objects are approaching (prevents redundant impulses)
             if rel < -0.001 then
               local e = math.min(self.bounce or 0.4, 0.9)
               local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0
               local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0
               local denom = invMassA + invMassB
               if denom > 0 then
-              -- If relative motion between the bodies over this step is large compared to size,
-              -- attempt a swept-sphere CCD to compute time-of-impact and resolve at that instant.
-              local dt = self.dt or 0.0166667
-              local relDisp = (b.velocity - a.velocity) * dt
-              local relPos0 = (b.position - a.position) - relDisp -- relative position at step start
+              local step_dt = self.dt or 0.0166667
+              local relDisp = (b.velocity - a.velocity) * step_dt
+              local relPos0 = (b.position - a.position) - relDisp
               local a_q = relDisp..relDisp
               local b_q = 2 * (relPos0..relDisp)
               local c_q = (relPos0..relPos0) - (minDist * minDist)
@@ -303,27 +253,22 @@ function box:update(dt)
                   local sqrtD = math.sqrt(disc)
                   local ttoi = (-b_q - sqrtD) / (2 * a_q)
                   if ttoi >= 0 and ttoi <= 1 then
-                    -- time of impact fraction found; move bodies to TOI, apply impulse, advance remainder
-                    local prevA = a.position - a.velocity * dt
-                    local prevB = b.position - b.velocity * dt
-                    local posA_t = prevA + a.velocity * (ttoi * dt)
-                    local posB_t = prevB + b.velocity * (ttoi * dt)
+                    local prevA = a.position - a.velocity * step_dt
+                    local prevB = b.position - b.velocity * step_dt
+                    local posA_t = prevA + a.velocity * (ttoi * step_dt)
+                    local posB_t = prevB + b.velocity * (ttoi * step_dt)
                     local contact = posB_t - posA_t
                     local dist_t = contact:abs()
                     if dist_t > eps then
-                      local n = contact * (1 / dist_t)
-                      -- relative normal velocity at TOI
-                      local relv = (b.velocity - a.velocity)..n
+                      local normal_toi = contact * (1 / dist_t)
+                      local relv = (b.velocity - a.velocity)..normal_toi
                       local j = (-(1 + e) * relv) / denom
-                      local impulse = n * j
-                      -- rewind positions to TOI
+                      local impulse = normal_toi * j
                       a.position = posA_t
                       b.position = posB_t
-                      -- apply impulses to velocities
                       a:push(-impulse)
                       b:push(impulse)
-                      -- advance remainder of step with new velocities
-                      local rem = (1 - ttoi) * dt
+                      local rem = (1 - ttoi) * step_dt
                       a.position = a.position + a.velocity * rem
                       b.position = b.position + b.velocity * rem
                       didCCD = true
@@ -333,44 +278,38 @@ function box:update(dt)
               end
 
               if not didCCD then
-                -- fallback to instantaneous impulse at end of step
                 local j = (-(1+e) * rel) / denom
                 local impulse = normal * j
                 a:push(-impulse)
                 b:push(impulse)
                 
-                -- Tangential friction (simplified Coulomb friction)
                 local rel_vel = b.velocity - a.velocity
                 local tangent = rel_vel - normal * (rel_vel..normal)
                 local tangent_mag = tangent:abs()
                 if tangent_mag > 1e-6 then
                   local tangent_dir = tangent / tangent_mag
-                  local mu = 0.3  -- friction coefficient for die-die collisions
+                  local mu = 0.3
                   local friction_impulse = tangent_dir * math.min(tangent_mag * denom, mu * math.abs(j))
                   a:push(friction_impulse)
                   b:push(-friction_impulse)
                 end
                 
-                -- mark collision for debug
                 a._last_collision = {other=B.idx}
                 b._last_collision = {other=A.idx}
                 
-                -- positional correction to avoid sinking/interpenetration
-                -- ALWAYS apply correction to prevent dice clipping through each other
-                local slop = 0.01  -- smaller tolerance for tighter separation
-                local percent = 0.4  -- stronger correction (was 0.08)
+                local slop = 0.01
+                local percent = 0.4
                 local penetration = minDist - dist
                 
-                -- Always apply correction when penetrating
                 if penetration > slop and denom > 0 then
                   local correction = normal * ((penetration - slop) * (percent / denom))
                   a.position = a.position - correction * invMassA
                   b.position = b.position + correction * invMassB
                 end
               end
-            end  -- close 'if denom > 0'
-            end  -- close 'if rel < -0.001'
-          end  -- close 'if dist > 0 and dist < minDist'
+            end
+            end
+          end
           ::continue_pair::
         end
       end
@@ -379,12 +318,9 @@ function box:update(dt)
     steps = steps + 1
   end
   if steps == maxSteps then
-    -- drop remaining accumulated time to avoid spiral-of-death
     self.timeleft = 0
   end
   
-  -- SOFT PUSHBACK: Separate ALL dice that are compenetrating (position-only, no velocity)
-  -- This prevents visual clipping - works on all dice, not just asleep ones
   for i=1,#self do
     local a = self[i]
     for j=i+1,#self do
@@ -393,12 +329,9 @@ function box:update(dt)
       local dist = diff:abs()
       local minDist = a.radius + b.radius
       if dist > 0.01 and dist < minDist then
-        -- They're compenetrating; push them apart in full 3D
         local normal = diff * (1/dist)
         local penetration = minDist - dist
-        -- Stronger pushback: 80% of penetration resolved immediately
         local pushback = normal * (penetration * 0.8)
-        -- Split evenly (or by mass if needed)
         local invMassA = (a.mass ~= 0) and (1 / a.mass) or 0.5
         local invMassB = (b.mass ~= 0) and (1 / b.mass) or 0.5
         local total = invMassA + invMassB
@@ -410,7 +343,6 @@ function box:update(dt)
     end
   end
   
-  -- flush buffered logs if any
   if self.log_buffer and #self.log_buffer > 0 then
     local fh = io.open("physics_log.txt","a")
     if fh then
@@ -421,27 +353,22 @@ function box:update(dt)
   end
 end
 
---------------------------------------------------------------------------------
--- STAR (rigid body)
---------------------------------------------------------------------------------
-star={position=vector{}, velocity=vector{}, angular=vector{}, mass=0, theta=0}
-function star:set(pos,vel,ang,m,th)
+---@diagnostic disable-next-line: lowercase-global
+body={position=vector{}, velocity=vector{}, angular=vector{}, mass=0, theta=0}
+function body:set(pos,vel,ang,m,th)
   self.position=vector(pos) or self.position
   self.velocity=vector(vel) or self.velocity
   self.angular=vector(ang) or self.angular
   self.mass=m or self.mass
-  -- cache inverse mass for fast access; mass==0 -> invMass = 0 (infinite mass/static)
   self.invMass = (self.mass ~= 0) and (1 / self.mass) or 0
   self.theta=th or self.theta
-  -- compute radius cache for collision detection
   local r = 0
   for k=1,#self do r = math.max(r, vector(self[k] or {0,0,0}):abs()) end
-  self.radius = r * 0.75  -- 75%: better coverage for cubic dice
+  self.radius = r * 0.75
   return self
 end
 
-function star:effect(impulse, displacement)
-  -- safe effect: avoid division by zero for mass/theta
+function body:effect(impulse, displacement)
   local dv = vector{0,0,0}
   local da = vector{0,0,0}
   if (self.mass or 0) ~= 0 then
@@ -453,17 +380,15 @@ function star:effect(impulse, displacement)
   return dv, da
 end
 
-function star:push(impulse, displacement)
+function body:push(impulse, displacement)
   local dv, da = self:effect(impulse, displacement)
-  -- defensive clamp: avoid applying extreme delta-velocities that destabilize simulation
   local dv_mag = dv:abs()
   local dv_max = (self.dv_max or box.dv_max or 50)
   if dv_mag > dv_max then
-    -- log anomaly to file for diagnosis (use high-resolution time if available)
     local t = (love and love.timer and love.timer.getTime()) or os.time()
     local fh = io.open("physics_log.txt","a")
     if fh then
-      fh:write(string.format("[ANOMALY] time=%.3f star:push clamped dv=%.3f -> %.3f pos=(%.3f,%.3f,%.3f)\n", t, dv_mag, dv_max, self.position[1], self.position[2], self.position[3]))
+      fh:write(string.format("[ANOMALY] time=%.3f body:push clamped dv=%.3f -> %.3f pos=(%.3f,%.3f,%.3f)\n", t, dv_mag, dv_max, self.position[1], self.position[2], self.position[3]))
       fh:close()
     else
       log("[ANOMALY] could not open physics_log.txt to write anomaly")
@@ -474,30 +399,24 @@ function star:push(impulse, displacement)
   self.angular = self.angular + da
 end
 
-function star:update(dt)
+function body:update(dt)
   self.position=self.position+self.velocity*dt
   local r=rotation():set(self.angular:abs()*dt, self.angular:norm())
   for i=1,#self do self[i]=r(self[i]) end
 end
 
 
---bounce off a wall
-function star:wall(index, normal, restitution, friction)
-  --frictionless bounce
+function body:wall(index, normal, restitution, friction)
   local d = self[index]
-  -- allow per-star override of restitution/friction
   local e = (self.restitution ~= nil) and self.restitution or restitution
   local f = (self.friction ~= nil) and self.friction or friction
 
   local s = normal..(self.angular^d + self.velocity)
   
-  -- If asleep and contact velocity is VERY small, skip processing (prevents wake loop)
-  -- Increased threshold from 0.01 to 0.05 for ultra-static contacts
   if self.asleep and math.abs(s) < 0.05 then
-    return  -- Static contact - no wake, no impulse
+    return
   end
   
-  -- Wake if contact velocity significant (>0.05)
   if self.asleep and math.abs(s) >= 0.05 then
     self.asleep = false
     self.sleep_timer = 0
@@ -505,35 +424,29 @@ function star:wall(index, normal, restitution, friction)
   
   local cv,ca = self:effect(normal,d)
 
-  local cs = ca^d + cv -- change in contact point speed with unit constraint
+  local cs = ca^d + cv
   local constraint = (1 + e) * s / (cs..normal)
   
-  -- Wall hit counter to prevent infinite bouncing
   self.wall_hits = (self.wall_hits or 0) + 1
   if self.wall_hits > 150 then
-    -- Drastically dampen velocity to stop perpetual bouncing
     self.velocity = self.velocity * 0.2
     self.angular = self.angular * 0.3
     self.wall_hits = 0
   end
   
-  -- friction simulation in steps
   local steps = 11
   local impulse = -constraint * normal / steps
   local abs = impulse:abs()
   for i=1,steps do
     self:push(impulse,d)
-    -- here comes the friction (use per-star or passed friction)
-    local s = self.angular^d + self.velocity
-    s = (s - (normal..s) * normal)
-    self:push(s:norm() * f * (-abs), d)
+    local tangent_vel = self.angular^d + self.velocity
+    tangent_vel = (tangent_vel - (normal..tangent_vel) * normal)
+    self:push(tangent_vel:norm() * f * (-abs), d)
   end
-  -- mark last wall hit for debug
   self._last_wall = {index=index, normal=normal}
 end
 
---bounce inside two parallel infinite walls
-function star:parallel(normal, min, max, restitution, friction)
+function body:parallel(normal, min, max, restitution, friction)
   local lowest, highest = nil,nil
   local lowesta, highesta = min,max
   for i=1,#self do
@@ -548,14 +461,11 @@ function star:parallel(normal, min, max, restitution, friction)
     end
   end
   
-  -- CRITICAL FIX: only process if penetration is significant
-  -- This prevents micro-corrections that cause jitter when multiple vertices touch
   local penetration_threshold = 0.001
   
   if lowest and (min - lowesta) > penetration_threshold then
     self:wall(lowest,normal,restitution,friction)
     if not self.asleep then
-      -- Only correct position if awake (prevent jitter on sleeping bodies)
       self.position=self.position+normal*(min-lowesta)
     end
   end
@@ -563,19 +473,16 @@ function star:parallel(normal, min, max, restitution, friction)
   if highest and (highesta - max) > penetration_threshold then
     self:wall(highest,-normal,restitution,friction)
     if not self.asleep then
-      -- Only correct position if awake (prevent jitter on sleeping bodies)
       self.position=self.position+normal*(max-highesta)
     end
   end
   
 end
 
---bounce inside a box
-function star:box(x1,y1,z1,x2,y2,z2,restitution,friction)
+function body:box(x1,y1,z1,x2,y2,z2,restitution,friction)
   self:parallel(vector{0,0,1},z1,z2,restitution, friction)
   self:parallel(vector{1,0,0},x1,x2,restitution, friction)
   self:parallel(vector{0,1,0},y1,y2,restitution, friction)
 end
 
--- Return the world table for external use (runner expects a table)
 return box

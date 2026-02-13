@@ -1,45 +1,42 @@
--- src/content/mvp_decks.lua
--- Data-driven MVP decks for Scriptorium runs.
-
 local Decks = {}
 
 local COMMISSIONS = {
-    { id = "rubriche_richieste", name = "Rubriche richieste", text = "Ogni Rosso vale +1 qualita", effects = { quality_per_color = { ROSSO = 1 } } },
-    { id = "miniatura_preziosa", name = "Miniatura preziosa", text = "Ogni Oro vale +1 qualita extra", effects = { quality_per_color = { GIALLO = 1 } } },
-    { id = "no_oro", name = "No dorature", text = "Oro vietato in questo folio", effects = { forbid_colors = { GIALLO = true } } },
-    { id = "oro_azzardato", name = "Oro azzardato", text = "Oro vale +2 qualita ma +1 rischio", effects = { quality_per_color = { GIALLO = 2 }, risk_on_color = { GIALLO = 1 } } },
-    { id = "inchiostro_nero", name = "Inchiostro nero", text = "Nero vale +1 qualita", effects = { quality_per_color = { NERO = 1 } } },
-    { id = "rosso_pericoloso", name = "Rubricatore esperto", text = "Rosso vale +1 qualita e +1 rischio", effects = { quality_per_color = { ROSSO = 1 }, risk_on_color = { ROSSO = 1 } } },
-    { id = "bordi_audaci", name = "Bordi audaci", text = "Bordi danno +1 qualita per dado", effects = { quality_per_section = { BORDERS = 1 } } },
-    { id = "testo_pulito", name = "Testo pulito", text = "Testo da +1 qualita per dado", effects = { quality_per_section = { TEXT = 1 } } },
-    { id = "miniatura_varia", name = "Miniatura varia", text = "Miniatura da +1 qualita per dado", effects = { quality_per_section = { MINIATURE = 1 } } },
-    { id = "capilettera_ricchi", name = "Capilettera ricchi", text = "Dropcaps da +1 qualita per dado", effects = { quality_per_section = { DROPCAPS = 1 } } },
-    { id = "ostinazione", name = "Cliente ostinato", text = "Ogni PUSH +1 rischio", effects = { push_risk_always = 1 } },
-    { id = "copista_lieve", name = "Cliente benevolo", text = "Soglia wet sicura +1", effects = { safe_wet_threshold_bonus = 1 } },
+    { id = "required_rubrics", name = "Required Rubrics", text = "Each red die grants +1 quality", effects = { quality_per_color = { ROSSO = 1 } } },
+    { id = "precious_miniature", name = "Precious Miniature", text = "Each gold die grants +1 extra quality", effects = { quality_per_color = { GIALLO = 1 } } },
+    { id = "no_gold", name = "No Gold Leaf", text = "Gold is forbidden in this folio", effects = { forbid_colors = { GIALLO = true } } },
+    { id = "risky_gold", name = "Risky Gold", text = "Gold grants +2 quality but +1 risk", effects = { quality_per_color = { GIALLO = 2 }, risk_on_color = { GIALLO = 1 } } },
+    { id = "black_ink", name = "Black Ink", text = "Black grants +1 quality", effects = { quality_per_color = { NERO = 1 } } },
+    { id = "expert_rubricator", name = "Expert Rubricator", text = "Red grants +1 quality and +1 risk", effects = { quality_per_color = { ROSSO = 1 }, risk_on_color = { ROSSO = 1 } } },
+    { id = "bold_borders", name = "Bold Borders", text = "Borders grant +1 quality per die", effects = { quality_per_section = { BORDERS = 1 } } },
+    { id = "clean_text", name = "Clean Text", text = "Text grants +1 quality per die", effects = { quality_per_section = { TEXT = 1 } } },
+    { id = "varied_miniature", name = "Varied Miniature", text = "Miniature grants +1 quality per die", effects = { quality_per_section = { MINIATURE = 1 } } },
+    { id = "rich_dropcaps", name = "Rich Dropcaps", text = "Dropcaps grant +1 quality per die", effects = { quality_per_section = { DROPCAPS = 1 } } },
+    { id = "stubborn_patron", name = "Stubborn Patron", text = "Each PUSH adds +1 risk", effects = { push_risk_always = 1 } },
+    { id = "kind_patron", name = "Kind Patron", text = "Safe wet threshold +1", effects = { safe_wet_threshold_bonus = 1 } },
 }
 
 local PARCHMENTS = {
-    { id = "umidita", name = "Pergamena umida", text = "Primo STOP lascia 1 dado ancora wet", effects = { first_stop_wet_left = 1 } },
-    { id = "grana_ruvida", name = "Grana ruvida", text = "Ogni valore 1 aumenta rischio", effects = { risk_on_value = { [1] = 1 } } },
-    { id = "fibre_fragili", name = "Fibre fragili", text = "Ogni dado nei Bordi aumenta rischio", effects = { risk_on_section = { BORDERS = 1 } } },
-    { id = "vellum_fine", name = "Vellum fine", text = "Soglia wet sicura +1", effects = { safe_wet_threshold_bonus = 1 } },
-    { id = "pergamena_stabile", name = "Pergamena stabile", text = "Rischio da over-wet ridotto", effects = { safe_wet_threshold_bonus = 2 } },
-    { id = "inchiostro_acido", name = "Inchiostro acido", text = "Ogni Rosso aumenta rischio", effects = { risk_on_color = { ROSSO = 1 } } },
-    { id = "trattata_allume", name = "Trattata con allume", text = "Ogni Verde vale +1 qualita", effects = { quality_per_color = { VERDE = 1 } } },
-    { id = "patina_scura", name = "Patina scura", text = "Ogni Nero vale +1 qualita", effects = { quality_per_color = { NERO = 1 } } },
-    { id = "margini_larghi", name = "Margini larghi", text = "Bordi richiedono pari", effects = { force_borders_parity = "EVEN" } },
-    { id = "margini_stretti", name = "Margini stretti", text = "Bordi richiedono dispari", effects = { force_borders_parity = "ODD" } },
-    { id = "assorbente", name = "Pergamena assorbente", text = "Primo STOP riduce rischio di 1", effects = { stop_risk_reduction = 1 } },
-    { id = "calligrafica", name = "Pergamena calligrafica", text = "Testo da +1 qualita per dado", effects = { quality_per_section = { TEXT = 1 } } },
+    { id = "humidity", name = "Humid Parchment", text = "First STOP keeps 1 die wet", effects = { first_stop_wet_left = 1 } },
+    { id = "rough_grain", name = "Rough Grain", text = "Each value 1 adds +1 risk", effects = { risk_on_value = { [1] = 1 } } },
+    { id = "fragile_fibers", name = "Fragile Fibers", text = "Each die in Borders adds +1 risk", effects = { risk_on_section = { BORDERS = 1 } } },
+    { id = "fine_vellum", name = "Fine Vellum", text = "Safe wet threshold +1", effects = { safe_wet_threshold_bonus = 1 } },
+    { id = "stable_parchment", name = "Stable Parchment", text = "Over-wet risk reduced", effects = { safe_wet_threshold_bonus = 2 } },
+    { id = "acidic_ink", name = "Acidic Ink", text = "Each red die adds +1 risk", effects = { risk_on_color = { ROSSO = 1 } } },
+    { id = "alum_treated", name = "Alum Treated", text = "Each green die grants +1 quality", effects = { quality_per_color = { VERDE = 1 } } },
+    { id = "dark_patina", name = "Dark Patina", text = "Each black die grants +1 quality", effects = { quality_per_color = { NERO = 1 } } },
+    { id = "wide_margins", name = "Wide Margins", text = "Borders require even values", effects = { force_borders_parity = "EVEN" } },
+    { id = "tight_margins", name = "Tight Margins", text = "Borders require odd values", effects = { force_borders_parity = "ODD" } },
+    { id = "absorbent", name = "Absorbent Parchment", text = "First STOP reduces risk by 1", effects = { stop_risk_reduction = 1 } },
+    { id = "calligraphic", name = "Calligraphic Parchment", text = "Text grants +1 quality per die", effects = { quality_per_section = { TEXT = 1 } } },
 }
 
 local TOOLS = {
-    { id = "coltellino", name = "Coltellino", text = "1/folio: riduci di 1 un dado in auto-place", uses_per_folio = 1, effects = { tool_coltellino = true } },
-    { id = "sabbia", name = "Sabbia", text = "1/folio: STOP riduce rischio di 2", uses_per_folio = 1, effects = { tool_stop_risk_reduction = 2 } },
-    { id = "pennino_fine", name = "Pennino fine", text = "Soglia wet sicura +1", uses_per_folio = 0, effects = { safe_wet_threshold_bonus = 1 } },
-    { id = "raschietto", name = "Raschietto", text = "1/folio: ignora una macchia futura", uses_per_folio = 1, effects = { tool_bonus_guard = 1 } },
-    { id = "calamaio_rosso", name = "Calamaio rosso", text = "Rosso vale +1 qualita", uses_per_folio = 0, effects = { quality_per_color = { ROSSO = 1 } } },
-    { id = "regolo", name = "Regolo", text = "Ogni PUSH +0 rischio (stabile)", uses_per_folio = 0, effects = { push_risk_always = 0 } },
+    { id = "knife", name = "Knife", text = "1/folio: reduce one auto-placed die by 1", uses_per_folio = 1, effects = { tool_knife = true } },
+    { id = "sand", name = "Sand", text = "1/folio: STOP reduces risk by 2", uses_per_folio = 1, effects = { tool_stop_risk_reduction = 2 } },
+    { id = "fine_nib", name = "Fine Nib", text = "Safe wet threshold +1", uses_per_folio = 0, effects = { safe_wet_threshold_bonus = 1 } },
+    { id = "scraper", name = "Scraper", text = "1/folio: ignore one future stain", uses_per_folio = 1, effects = { tool_bonus_guard = 1 } },
+    { id = "red_inkwell", name = "Red Inkwell", text = "Red grants +1 quality", uses_per_folio = 0, effects = { quality_per_color = { ROSSO = 1 } } },
+    { id = "ruler", name = "Ruler", text = "Each PUSH adds +0 risk (stable)", uses_per_folio = 0, effects = { push_risk_always = 0 } },
 }
 
 local function make_rng(seed)
@@ -92,7 +89,7 @@ local function merge_effects(cards)
         stop_risk_reduction = 0,
         tool_stop_risk_reduction = 0,
         force_borders_parity = nil,
-        tool_coltellino = false,
+        tool_knife = false,
         tool_bonus_guard = 0,
     }
 
@@ -124,8 +121,8 @@ local function merge_effects(cards)
             if type(effects.force_borders_parity) == "string" then
                 out.force_borders_parity = effects.force_borders_parity
             end
-            if effects.tool_coltellino then
-                out.tool_coltellino = true
+            if effects.tool_knife then
+                out.tool_knife = true
             end
             if type(effects.tool_bonus_guard) == "number" then
                 out.tool_bonus_guard = out.tool_bonus_guard + effects.tool_bonus_guard
@@ -136,7 +133,7 @@ local function merge_effects(cards)
     return out
 end
 
-function Decks.draw_run_setup(seed)
+function Decks.drawRunSetup(seed)
     local rng = make_rng(seed)
     local commission = pick_one(COMMISSIONS, rng)
     local parchment = pick_one(PARCHMENTS, rng)
@@ -149,7 +146,7 @@ function Decks.draw_run_setup(seed)
     }
 end
 
-function Decks.get_decks()
+function Decks.getDecks()
     return {
         commissions = COMMISSIONS,
         parchments = PARCHMENTS,
